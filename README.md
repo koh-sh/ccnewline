@@ -11,7 +11,7 @@ Many text files should end with a newline character according to POSIX standards
 - Code linters and formatters
 - Concatenating files
 
-Traditionally, Claude Code hooks would require complex shell scripting with `jq` to parse JSON tool outputs and extract file paths. **ccnewline** simplifies this by handling JSON parsing internally, providing a single-purpose tool that automatically adds missing newlines to files modified by Edit, MultiEdit, and Write operations.
+Claude Code hooks would require complex shell scripting with `jq` to parse JSON tool outputs and extract file paths. **ccnewline** simplifies this by handling JSON parsing internally, providing a single-purpose tool that automatically adds missing newlines to files modified by Edit, MultiEdit, and Write operations.
 
 ## Features
 
@@ -68,17 +68,6 @@ When you use Claude Code's Edit, MultiEdit, or Write tools:
 
 The process is completely transparent - you don't need to think about it.
 
-## How It Works
-
-After Claude Code Edit/MultiEdit/Write operations, ccnewline automatically:
-
-1. Receives the tool output via stdin
-2. Extracts file paths from the JSON
-3. Checks each file's ending
-4. Adds newlines only where missing
-
-Normal mode shows "Added newline to [file]" messages when changes are made.
-
 ## Hook Command Options
 
 | Flag | Long Form | Description | Best For |
@@ -86,46 +75,6 @@ Normal mode shows "Added newline to [file]" messages when changes are made.
 | `-d` | `--debug` | Detailed processing information | Development & troubleshooting |
 | `-s` | `--silent` | No output at all | Production environments |
 | (none) | | Brief "Added newline to [file]" messages | General use |
-
-## Technical Details
-
-1. **Hook Trigger**: Automatically receives Claude Code tool output as JSON via stdin
-2. **Path Extraction**: Parses `tool_input.file_path`, `tool_input.path`, or `tool_input.paths[]`
-3. **File Analysis**: Checks each file's last byte to detect missing newlines (0x0a)
-4. **Smart Processing**: Only modifies files that actually need newlines
-5. **Logging**: Reports actions based on your configured output mode
-
-## Error Handling
-
-ccnewline gracefully handles common scenarios:
-
-- **Non-existent files**: Skipped silently
-- **Empty files**: Left unchanged  
-- **Read-only files**: Error reported but processing continues
-- **Directories**: Skipped with error message
-- **Invalid JSON**: Falls back to plain text mode
-
-## Installation Location
-
-Place the binary in a permanent location and use the full path in your Claude Code settings:
-
-```bash
-# Example installation
-sudo cp ccnewline /usr/local/bin/ccnewline
-```
-
-Then use in Claude Code settings:
-
-```json
-{
-  "hooks": {
-    "postToolUse": {
-      "command": "/usr/local/bin/ccnewline -d",
-      "tools": ["Edit", "MultiEdit", "Write"]
-    }
-  }
-}
-```
 
 ## Development
 
@@ -136,11 +85,3 @@ For development and testing:
 go build -o ccnewline
 make ci  # Run full test suite
 ```
-
-## License
-
-[Add your license here]
-
-## Contributing
-
-[Add contribution guidelines here]
