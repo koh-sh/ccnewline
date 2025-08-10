@@ -13,6 +13,13 @@ import (
 	"strings"
 )
 
+// Version information, set by goreleaser during build
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 // newlineByte represents the byte value of a newline character (\n)
 const newlineByte = 0x0a
 
@@ -40,12 +47,20 @@ Options:
 func parseFlags() *Config {
 	flag.Usage = usage
 
-	var debug, silent bool
+	var debug, silent, showVersion bool
 	flag.BoolVar(&debug, "d", false, "Enable debug output")
 	flag.BoolVar(&debug, "debug", false, "Enable debug output")
 	flag.BoolVar(&silent, "s", false, "Silent mode - no output")
 	flag.BoolVar(&silent, "silent", false, "Silent mode - no output")
+	flag.BoolVar(&showVersion, "v", false, "Show version information")
+	flag.BoolVar(&showVersion, "version", false, "Show version information")
 	flag.Parse()
+
+	// Handle version flag
+	if showVersion {
+		fmt.Printf("ccnewline %s (Built on %s from Git SHA %s)\n", version, date, commit)
+		os.Exit(0)
+	}
 
 	// Validate that no command line arguments were provided since we only accept stdin
 	if flag.NArg() > 0 {
