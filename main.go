@@ -73,26 +73,34 @@ func parseFlags() *Config {
 
 // run executes the main processing logic with the given configuration and input
 func run(config *Config, input io.Reader) {
-	// Read and parse file paths from input (either JSON or plain text)
 	filePaths := readFilePathsFromReader(config, input)
 	if len(filePaths) == 0 {
 		config.debugSectionWithInfo("RESULT", "No files to process")
 		return
 	}
 
+	processFiles(config, filePaths)
+}
+
+// processFiles handles the processing of multiple files with debug output
+func processFiles(config *Config, filePaths []string) {
 	config.debugSection("PROCESSING")
 	config.debugInfo("Total files to process: %d", len(filePaths))
 
-	// Process each file to add newlines if needed
 	for i, filePath := range filePaths {
-		config.debugInfo("[%d/%d] Processing: %s", i+1, len(filePaths), filePath)
-		if err := addNewlineIfNeeded(filePath, config); err != nil {
-			config.debugInfo("Error: %v", err)
-			fmt.Fprintf(os.Stderr, "Error processing %s: %v\n", filePath, err)
-		}
+		processSingleFile(config, filePath, i+1, len(filePaths))
 	}
 
 	config.debugSeparator()
+}
+
+// processSingleFile processes a single file and handles any errors
+func processSingleFile(config *Config, filePath string, current, total int) {
+	config.debugInfo("[%d/%d] Processing: %s", current, total, filePath)
+	if err := addNewlineIfNeeded(filePath, config); err != nil {
+		config.debugInfo("Error: %v", err)
+		fmt.Fprintf(os.Stderr, "Error processing %s: %v\n", filePath, err)
+	}
 }
 
 // main is the entry point of the ccnewline tool
@@ -192,32 +200,12 @@ func readFilePaths(config *Config) []string {
 // Claude Code tool outputs. It first attempts JSON parsing to extract paths
 // from tool_input fields, falling back to plain text parsing if JSON fails.
 func readFilePathsFromReader(config *Config, input io.Reader) []string {
-	// Check if stdin has any data available (not a terminal) - only when using os.Stdin
-	if input == os.Stdin {
-		stat, err := os.Stdin.Stat()
-		if err != nil || (stat.Mode()&os.ModeCharDevice) != 0 {
-			config.debugSectionWithInfo("INPUT PARSING", "No stdin input available")
-			return nil
-		}
+	if !hasInputAvailable(config, input) {
+		return nil
 	}
 
 	config.debugSection("INPUT PARSING")
-
-	// Read all lines from input, preserving empty lines after content starts
-	var lines []string
-	scanner := bufio.NewScanner(input)
-	for scanner.Scan() {
-		line := scanner.Text()
-		// Start collecting lines on first non-empty line or if we already have content
-		if line != "" || len(lines) > 0 {
-			lines = append(lines, line)
-		}
-	}
-
-	// Trim trailing empty lines
-	for len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
+	lines := readInputLines(input)
 
 	if len(lines) == 0 {
 		config.debugInfo("Empty input")
@@ -228,7 +216,42 @@ func readFilePathsFromReader(config *Config, input io.Reader) []string {
 	config.debugInfo("Input received (%d lines):", len(lines))
 	config.displayLines(lines, 3)
 
-	// Attempt to parse as JSON first (Claude Code tool output)
+	return parseInputLines(config, lines)
+}
+
+// hasInputAvailable checks if input is available from the reader
+func hasInputAvailable(config *Config, input io.Reader) bool {
+	if input == os.Stdin {
+		stat, err := os.Stdin.Stat()
+		if err != nil || (stat.Mode()&os.ModeCharDevice) != 0 {
+			config.debugSectionWithInfo("INPUT PARSING", "No stdin input available")
+			return false
+		}
+	}
+	return true
+}
+
+// readInputLines reads and normalizes input lines, trimming empty lines at start and end
+func readInputLines(input io.Reader) []string {
+	var lines []string
+	scanner := bufio.NewScanner(input)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line != "" || len(lines) > 0 {
+			lines = append(lines, line)
+		}
+	}
+
+	// Trim trailing empty lines
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+
+	return lines
+}
+
+// parseInputLines attempts JSON parsing first, then falls back to plain text
+func parseInputLines(config *Config, lines []string) []string {
 	inputText := strings.Join(lines, "\n")
 	if paths := extractFilePaths(inputText); len(paths) > 0 {
 		config.debugInfo("JSON parsing successful")
@@ -240,7 +263,11 @@ func readFilePathsFromReader(config *Config, input io.Reader) []string {
 		return paths
 	}
 
-	// Fallback: treat input as plain text with one file path per line
+	return parseAsPlainText(config, lines)
+}
+
+// parseAsPlainText treats input as plain text with one file path per line
+func parseAsPlainText(config *Config, lines []string) []string {
 	config.debugInfo("JSON parsing failed, treating as plain text")
 	var filePaths []string
 	for _, line := range lines {
@@ -256,19 +283,31 @@ func readFilePathsFromReader(config *Config, input io.Reader) []string {
 // tool_input fields. It looks for 'path', 'file_path', and 'paths' fields
 // which correspond to different Claude Code tools (Edit, Write, MultiEdit).
 func extractFilePaths(jsonText string) []string {
-	// Parse JSON and extract top-level structure
+	toolInput := parseJSONToolInput(jsonText)
+	if toolInput == nil {
+		return nil
+	}
+
+	return extractPathsFromToolInput(toolInput)
+}
+
+// parseJSONToolInput parses JSON and extracts the tool_input section
+func parseJSONToolInput(jsonText string) map[string]any {
 	var data map[string]any
 	if err := json.Unmarshal([]byte(jsonText), &data); err != nil {
 		return nil
 	}
 
-	// Extract tool_input section which contains file path information
 	toolInput, ok := data["tool_input"].(map[string]any)
 	if !ok {
 		return nil
 	}
 
-	// Collect all file paths from various tool_input fields
+	return toolInput
+}
+
+// extractPathsFromToolInput collects file paths from various tool_input fields
+func extractPathsFromToolInput(toolInput map[string]any) []string {
 	var paths []string
 	addPath := func(path string) {
 		if path != "" {
@@ -276,15 +315,15 @@ func extractFilePaths(jsonText string) []string {
 		}
 	}
 
-	// Extract from "path" field (used by some tools)
+	// Extract from single path fields
 	if path, ok := toolInput["path"].(string); ok {
 		addPath(path)
 	}
-	// Extract from "file_path" field (used by Edit, Write tools)
 	if filePath, ok := toolInput["file_path"].(string); ok {
 		addPath(filePath)
 	}
-	// Extract from "paths" array (used by MultiEdit tool)
+
+	// Extract from paths array (MultiEdit tool)
 	if pathsArray, ok := toolInput["paths"].([]any); ok {
 		for _, p := range pathsArray {
 			if pathStr, ok := p.(string); ok {
@@ -300,56 +339,71 @@ func extractFilePaths(jsonText string) []string {
 // one if missing. It skips non-existent or empty files and only modifies files
 // that don't end with a newline (0x0a byte).
 func addNewlineIfNeeded(filePath string, config *Config) error {
-	// Check if file exists and is not empty
-	info, err := os.Stat(filePath)
-	if err != nil {
-		config.debugInfo("File does not exist, skipping")
-		return nil
-	}
-	if info.Size() == 0 {
-		config.debugInfo("File is empty, skipping")
+	if !shouldProcessFile(filePath, config) {
 		return nil
 	}
 
-	// Open file for reading and writing
 	file, err := os.OpenFile(filePath, os.O_RDWR, 0o644)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	// Seek to the last byte of the file to check if it's a newline
-	_, err = file.Seek(-1, io.SeekEnd)
+	needsNewline, err := checkLastByte(file)
 	if err != nil {
 		return err
 	}
 
-	// Read the last byte to check if it's a newline character
-	lastByte := make([]byte, 1)
-	_, err = file.Read(lastByte)
-	if err != nil {
-		return err
+	if needsNewline {
+		return addNewlineToFile(file, filePath, config)
 	}
 
-	// Add newline if the file doesn't end with one
-	if lastByte[0] != newlineByte {
-		config.debugInfo("Adding newline (missing)")
-		config.debugFileContents(filePath)
-
-		// Append newline character to the end of the file
-		_, err = file.Write([]byte{newlineByte})
-		if err == nil {
-			config.debugInfo("Newline added successfully")
-			// Output normal message when not in debug or silent mode
-			if !config.Debug && !config.Silent {
-				fmt.Printf("Added newline to %s\n", filePath)
-			}
-		}
-		return err
-	}
-
-	// File already ends with newline, no action needed
 	config.debugInfo("Already ends with newline")
 	config.debugFileContents(filePath)
 	return nil
+}
+
+// shouldProcessFile checks if the file exists and is not empty
+func shouldProcessFile(filePath string, config *Config) bool {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		config.debugInfo("File does not exist, skipping")
+		return false
+	}
+	if info.Size() == 0 {
+		config.debugInfo("File is empty, skipping")
+		return false
+	}
+	return true
+}
+
+// checkLastByte reads the last byte of the file to check if it's a newline
+func checkLastByte(file *os.File) (bool, error) {
+	_, err := file.Seek(-1, io.SeekEnd)
+	if err != nil {
+		return false, err
+	}
+
+	lastByte := make([]byte, 1)
+	_, err = file.Read(lastByte)
+	if err != nil {
+		return false, err
+	}
+
+	return lastByte[0] != newlineByte, nil
+}
+
+// addNewlineToFile appends a newline to the file and handles output
+func addNewlineToFile(file *os.File, filePath string, config *Config) error {
+	config.debugInfo("Adding newline (missing)")
+	config.debugFileContents(filePath)
+
+	_, err := file.Write([]byte{newlineByte})
+	if err == nil {
+		config.debugInfo("Newline added successfully")
+		if !config.Debug && !config.Silent {
+			fmt.Printf("Added newline to %s\n", filePath)
+		}
+	}
+	return err
 }
