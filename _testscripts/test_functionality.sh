@@ -250,6 +250,7 @@ main() {
 trap cleanup EXIT
 
 # Run main function
+go build
 main "$@"
 exit_code=$?
 exit $exit_code

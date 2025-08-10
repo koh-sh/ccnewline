@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"flag"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -158,7 +160,8 @@ func TestAddNewlineIfNeeded(t *testing.T) {
 				}
 			}
 
-			err := AddNewlineIfNeeded(testFile, tt.debugMode)
+			config := &Config{Debug: tt.debugMode, Silent: false}
+			err := addNewlineIfNeeded(testFile, config)
 
 			if tt.expectError && err == nil {
 				t.Error("Expected error, but got none")
@@ -187,14 +190,16 @@ func TestAddNewlineIfNeeded(t *testing.T) {
 
 	// Error handling scenarios
 	t.Run("non-existent file", func(t *testing.T) {
-		err := AddNewlineIfNeeded("/nonexistent/file.txt", false)
+		config := &Config{Debug: false, Silent: false}
+		err := addNewlineIfNeeded("/nonexistent/file.txt", config)
 		if err != nil {
 			t.Errorf("Expected no error for non-existent file, got: %v", err)
 		}
 	})
 
 	t.Run("directory instead of file", func(t *testing.T) {
-		err := AddNewlineIfNeeded(tempDir, false)
+		config := &Config{Debug: false, Silent: false}
+		err := addNewlineIfNeeded(tempDir, config)
 		if err == nil {
 			t.Error("Expected error when processing directory, got nil")
 		}
@@ -213,7 +218,8 @@ func TestAddNewlineIfNeeded(t *testing.T) {
 			t.Fatalf("Failed to make file read-only: %v", err)
 		}
 
-		err = AddNewlineIfNeeded(testFile, false)
+		config := &Config{Debug: false, Silent: false}
+		err = addNewlineIfNeeded(testFile, config)
 		if err == nil {
 			t.Error("Expected error when trying to append to read-only file, got nil")
 		}
@@ -395,4 +401,92 @@ func TestOutputModes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseFlags(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		expected *Config
+	}{
+		{
+			name:     "no flags",
+			args:     []string{"ccnewline"},
+			expected: &Config{Debug: false, Silent: false},
+		},
+		{
+			name:     "debug flag -d",
+			args:     []string{"ccnewline", "-d"},
+			expected: &Config{Debug: true, Silent: false},
+		},
+		{
+			name:     "silent flag -s",
+			args:     []string{"ccnewline", "-s"},
+			expected: &Config{Debug: false, Silent: true},
+		},
+		{
+			name:     "both flags",
+			args:     []string{"ccnewline", "-d", "-s"},
+			expected: &Config{Debug: true, Silent: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+			oldArgs := os.Args
+			defer func() { os.Args = oldArgs }()
+			os.Args = tt.args
+
+			config := parseFlags()
+
+			if !reflect.DeepEqual(config, tt.expected) {
+				t.Errorf("parseFlags() = %+v, want %+v", config, tt.expected)
+			}
+		})
+	}
+}
+
+func TestRun(t *testing.T) {
+	t.Run("no files to process", func(t *testing.T) {
+		config := &Config{Debug: false, Silent: false}
+		reader := strings.NewReader("")
+		run(config, reader) // Should not panic or error
+	})
+
+	t.Run("integration test - JSON input with file processing", func(t *testing.T) {
+		tempDir := t.TempDir()
+		testFile := filepath.Join(tempDir, "test.txt")
+
+		err := os.WriteFile(testFile, []byte("content"), 0o644)
+		if err != nil {
+			t.Fatalf("Failed to create test file: %v", err)
+		}
+
+		input := `{"tool_input": {"file_path": "` + testFile + `"}}`
+		config := &Config{Debug: false, Silent: false}
+
+		// Capture stdout
+		oldStdout := os.Stdout
+		defer func() { os.Stdout = oldStdout }()
+
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatalf("Failed to create pipe: %v", err)
+		}
+		defer r.Close()
+		os.Stdout = w
+
+		reader := strings.NewReader(input)
+		run(config, reader)
+		w.Close()
+
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		output := buf.String()
+
+		if !strings.Contains(output, "Added newline to") {
+			t.Errorf("Expected output to contain 'Added newline to', got: %s", output)
+		}
+	})
 }
