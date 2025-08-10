@@ -27,13 +27,15 @@ The process is completely transparent - you don't need to think about it.
 
 ## Installation
 
-### Build from source
+### Using Homebrew
 
 ```bash
-git clone <repository-url>
-cd ccnewline
-go build -o ccnewline
+brew install --cask koh-sh/tap/ccnewline
 ```
+
+### Download from Releases
+
+Download the latest binary for your platform from the [releases page](https://github.com/koh-sh/ccnewline/releases).
 
 ## Setup
 
