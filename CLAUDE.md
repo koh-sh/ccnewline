@@ -9,7 +9,7 @@ ccnewline is a Claude Code PostToolUse hook that automatically ensures files end
 ## Core Design
 
 Single-file implementation following YAGNI principles:
-- All functionality in `main.go` (~271 lines)
+- All functionality in `main.go` (~825 lines) with SOLID-compliant architecture
 - Standard library only (no external dependencies)
 - Designed exclusively for Claude Code PostToolUse hook usage
 - Simple flag-based configuration: normal, silent (-s), debug (-d)
@@ -44,13 +44,33 @@ make ci            # Full CI pipeline (fmt, modernize-fix, lint, test)
 
 ## Testing Architecture
 
-The project has focused test coverage (75.0%):
+The project has focused test coverage (82.9%):
 
-- **Unit tests** (`main_test.go`): 4 core test functions covering JSON parsing, file processing, output modes, and error scenarios
+- **Unit tests** (`main_test.go`): 156 comprehensive table-driven tests covering all components with SOLID compliance
 - **Integration tests** (`_testscripts/test_functionality.sh`): 7 minimal tests covering Claude Code tool patterns (Edit/MultiEdit/Write) and output modes (normal/silent/debug)
 - **Coverage reporting**: Use `make cov` to generate HTML coverage reports
 
 When making changes, always run `make ci` to ensure all checks pass.
+
+## Development Workflow Guidelines
+
+**For any code modification work, always follow this quality assurance process:**
+
+1. **Create todo list**: Use todo list to track work items and ensure no tasks are missed
+2. **Continuous quality checks**: Execute the following commands throughout development:
+   ```bash
+   make ci            # Code quality, linting, formatting, and unit tests
+   make blackboxtest  # Integration tests (7 focused test cases)
+   make cov           # Test coverage verification
+   ```
+3. **Test-driven approach**: Maintain or improve test coverage when adding new functionality
+4. **Table-driven tests**: When writing tests, use table-driven test format with:
+   - No complex functions in test tables
+   - No complex if/switch branches in test execution
+   - Simple, data-driven test cases
+   - If the above requirements cannot be met, consider improving the application code instead
+
+These quality checks must pass before committing any changes to maintain code reliability and consistency.
 
 ## Claude Code Hook Configuration
 
