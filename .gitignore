@@ -27,3 +27,6 @@ cover.html
 
 # Test temporary files
 _testscripts/tmp/
+
+# Serena cache
+.serena/cache
