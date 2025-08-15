@@ -20,23 +20,23 @@ type MockLogger struct {
 	SectionEnds   int
 }
 
-// Print records regular messages
-func (m *MockLogger) Print(format string, args ...any) {
+// log records regular messages
+func (m *MockLogger) log(format string, args ...any) {
 	m.Messages = append(m.Messages, fmt.Sprintf(format, args...))
 }
 
-// Debug records debug messages
-func (m *MockLogger) Debug(format string, args ...any) {
+// debug records debug messages
+func (m *MockLogger) debug(format string, args ...any) {
 	m.DebugMessages = append(m.DebugMessages, fmt.Sprintf(format, args...))
 }
 
-// DebugSection records section starts
-func (m *MockLogger) DebugSection(title string) {
+// debugSection records section starts
+func (m *MockLogger) debugSection(title string) {
 	m.Sections = append(m.Sections, title)
 }
 
-// DebugEnd counts section ends
-func (m *MockLogger) DebugEnd() {
+// debugEnd counts section ends
+func (m *MockLogger) debugEnd() {
 	m.SectionEnds++
 }
 
@@ -293,7 +293,7 @@ func TestAddNewlineIfNeededBasicCases(t *testing.T) {
 			testFile := filepath.Join(tempDir, "test.txt")
 			_ = os.WriteFile(testFile, []byte(tt.initialContent), 0o644)
 
-			logger := NewConsoleLogger(&Config{})
+			logger := newConsoleLogger(&config{})
 			err := addNewlineIfNeeded(testFile, logger)
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
@@ -309,7 +309,7 @@ func TestAddNewlineIfNeededBasicCases(t *testing.T) {
 
 func TestAddNewlineIfNeededErrorCases(t *testing.T) {
 	tempDir := t.TempDir()
-	logger := NewConsoleLogger(&Config{})
+	logger := newConsoleLogger(&config{})
 
 	// Setup readonly file
 	readonlyFile := filepath.Join(tempDir, "readonly.txt")
@@ -356,7 +356,7 @@ func TestAddNewlineIfNeededErrorCases(t *testing.T) {
 func TestConsoleLoggerOutputModes(t *testing.T) {
 	tests := []struct {
 		name           string
-		config         *Config
+		config         *config
 		methodType     string
 		message        string
 		expectedOutput string
@@ -364,7 +364,7 @@ func TestConsoleLoggerOutputModes(t *testing.T) {
 	}{
 		{
 			name:           "normal mode outputs message",
-			config:         &Config{Debug: false, Silent: false},
+			config:         &config{Debug: false, Silent: false},
 			methodType:     "Log",
 			message:        "test message",
 			expectedOutput: "test message",
@@ -372,7 +372,7 @@ func TestConsoleLoggerOutputModes(t *testing.T) {
 		},
 		{
 			name:           "silent mode outputs nothing",
-			config:         &Config{Debug: false, Silent: true},
+			config:         &config{Debug: false, Silent: true},
 			methodType:     "Log",
 			message:        "test message",
 			expectedOutput: "",
@@ -380,7 +380,7 @@ func TestConsoleLoggerOutputModes(t *testing.T) {
 		},
 		{
 			name:           "debug mode outputs debug info",
-			config:         &Config{Debug: true, Silent: false},
+			config:         &config{Debug: true, Silent: false},
 			methodType:     "Debug",
 			message:        "debug message",
 			expectedOutput: "debug message",
@@ -390,13 +390,13 @@ func TestConsoleLoggerOutputModes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logger := NewConsoleLogger(tt.config)
+			logger := newConsoleLogger(tt.config)
 			output := captureOutput(func() {
 				switch tt.methodType {
 				case "Log":
-					logger.Print(tt.message)
+					logger.log(tt.message)
 				case "Debug":
-					logger.Debug(tt.message)
+					logger.debug(tt.message)
 				}
 			})
 
@@ -417,37 +417,37 @@ func TestParseFlags(t *testing.T) {
 	tests := []struct {
 		name     string
 		args     []string
-		expected *Config
+		expected *config
 	}{
 		{
 			name:     "no flags",
 			args:     []string{"ccnewline"},
-			expected: &Config{Debug: false, Silent: false},
+			expected: &config{Debug: false, Silent: false},
 		},
 		{
 			name:     "debug flag -d",
 			args:     []string{"ccnewline", "-d"},
-			expected: &Config{Debug: true, Silent: false},
+			expected: &config{Debug: true, Silent: false},
 		},
 		{
 			name:     "debug flag --debug",
 			args:     []string{"ccnewline", "--debug"},
-			expected: &Config{Debug: true, Silent: false},
+			expected: &config{Debug: true, Silent: false},
 		},
 		{
 			name:     "silent flag -s",
 			args:     []string{"ccnewline", "-s"},
-			expected: &Config{Debug: false, Silent: true},
+			expected: &config{Debug: false, Silent: true},
 		},
 		{
 			name:     "silent flag --silent",
 			args:     []string{"ccnewline", "--silent"},
-			expected: &Config{Debug: false, Silent: true},
+			expected: &config{Debug: false, Silent: true},
 		},
 		{
 			name:     "both flags",
 			args:     []string{"ccnewline", "-d", "-s"},
-			expected: &Config{Debug: true, Silent: true},
+			expected: &config{Debug: true, Silent: true},
 		},
 	}
 
@@ -565,7 +565,7 @@ func TestReadFilePathsFromReader(t *testing.T) {
 func TestConsoleLogger(t *testing.T) {
 	tests := []struct {
 		name           string
-		config         *Config
+		config         *config
 		message        string
 		methodType     string
 		expectedOutput string
@@ -573,7 +573,7 @@ func TestConsoleLogger(t *testing.T) {
 	}{
 		{
 			name:           "Log in silent mode",
-			config:         &Config{Silent: true},
+			config:         &config{Silent: true},
 			message:        "test message\n",
 			methodType:     "Log",
 			expectedOutput: "",
@@ -581,7 +581,7 @@ func TestConsoleLogger(t *testing.T) {
 		},
 		{
 			name:           "Log in debug mode",
-			config:         &Config{Debug: true},
+			config:         &config{Debug: true},
 			message:        "test message\n",
 			methodType:     "Log",
 			expectedOutput: "",
@@ -589,7 +589,7 @@ func TestConsoleLogger(t *testing.T) {
 		},
 		{
 			name:           "Log in normal mode",
-			config:         &Config{},
+			config:         &config{},
 			message:        "test message\n",
 			methodType:     "Log",
 			expectedOutput: "test message\n",
@@ -597,7 +597,7 @@ func TestConsoleLogger(t *testing.T) {
 		},
 		{
 			name:           "Debug without debug mode",
-			config:         &Config{Debug: false},
+			config:         &config{Debug: false},
 			message:        "test",
 			methodType:     "Debug",
 			expectedOutput: "",
@@ -605,7 +605,7 @@ func TestConsoleLogger(t *testing.T) {
 		},
 		{
 			name:           "Debug with debug mode",
-			config:         &Config{Debug: true},
+			config:         &config{Debug: true},
 			message:        "debug message",
 			methodType:     "Debug",
 			expectedOutput: "debug message",
@@ -613,7 +613,7 @@ func TestConsoleLogger(t *testing.T) {
 		},
 		{
 			name:           "DebugSection with debug mode",
-			config:         &Config{Debug: true},
+			config:         &config{Debug: true},
 			message:        "TEST",
 			methodType:     "DebugSection",
 			expectedOutput: "TEST",
@@ -621,7 +621,7 @@ func TestConsoleLogger(t *testing.T) {
 		},
 		{
 			name:           "DebugSeparator with debug mode",
-			config:         &Config{Debug: true},
+			config:         &config{Debug: true},
 			message:        "",
 			methodType:     "DebugSeparator",
 			expectedOutput: "└",
@@ -631,17 +631,17 @@ func TestConsoleLogger(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logger := NewConsoleLogger(tt.config)
+			logger := newConsoleLogger(tt.config)
 			output := captureOutput(func() {
 				switch tt.methodType {
 				case "Log":
-					logger.Print(tt.message)
+					logger.log(tt.message)
 				case "Debug":
-					logger.Debug(tt.message)
+					logger.debug(tt.message)
 				case "DebugSection":
-					logger.DebugSection(tt.message)
+					logger.debugSection(tt.message)
 				case "DebugSeparator":
-					logger.DebugEnd()
+					logger.debugEnd()
 				}
 			})
 
@@ -671,17 +671,17 @@ func TestVersionHandler(t *testing.T) {
 		expectError bool
 	}{
 		{
-			name:        "VersionHandler creation",
+			name:        "versionHandler creation",
 			checkType:   "creation",
 			expectError: false,
 		},
 		{
-			name:        "FlagParser has VersionHandler",
+			name:        "FlagParser has versionHandler",
 			checkType:   "flagparser",
 			expectError: false,
 		},
 		{
-			name:        "VersionHandler is not nil",
+			name:        "versionHandler is not nil",
 			checkType:   "notnull",
 			expectError: false,
 		},
@@ -692,17 +692,17 @@ func TestVersionHandler(t *testing.T) {
 			var err error
 			switch tt.checkType {
 			case "creation":
-				vh := &VersionHandler{}
-				// VersionHandler creation always succeeds
+				vh := &versionHandler{}
+				// versionHandler creation always succeeds
 				_ = vh // Just verify it can be created
 			case "flagparser":
-				fp := NewFlagParser()
+				fp := newFlagParser()
 				if fp.versionHandler == nil {
 					err = fmt.Errorf("FlagParser.versionHandler is nil")
 				}
 			case "notnull":
-				if versionHandler := NewFlagParser().versionHandler; versionHandler == nil {
-					err = fmt.Errorf("VersionHandler should not be nil")
+				if versionHandler := newFlagParser().versionHandler; versionHandler == nil {
+					err = fmt.Errorf("versionHandler should not be nil")
 				}
 			}
 
@@ -746,8 +746,8 @@ func TestArgumentValidator(t *testing.T) {
 			os.Args = tt.args
 			flag.Parse()
 
-			av := &ArgumentValidator{}
-			err := av.ValidateArgs()
+			av := &argumentValidator{}
+			err := av.validateArgs()
 
 			if tt.expectError && err == nil {
 				t.Error("Expected error but got nil")
@@ -764,22 +764,22 @@ func TestFlagParser(t *testing.T) {
 	tests := []struct {
 		name     string
 		args     []string
-		expected *Config
+		expected *config
 	}{
 		{
 			name:     "no flags",
 			args:     []string{"ccnewline"},
-			expected: &Config{Debug: false, Silent: false},
+			expected: &config{Debug: false, Silent: false},
 		},
 		{
 			name:     "debug flag",
 			args:     []string{"ccnewline", "-d"},
-			expected: &Config{Debug: true, Silent: false},
+			expected: &config{Debug: true, Silent: false},
 		},
 		{
 			name:     "silent flag",
 			args:     []string{"ccnewline", "-s"},
-			expected: &Config{Debug: false, Silent: true},
+			expected: &config{Debug: false, Silent: true},
 		},
 	}
 
@@ -790,8 +790,8 @@ func TestFlagParser(t *testing.T) {
 			defer func() { os.Args = oldArgs }()
 			os.Args = tt.args
 
-			fp := NewFlagParser()
-			config := fp.Parse()
+			fp := newFlagParser()
+			config := fp.parse()
 
 			if !reflect.DeepEqual(config, tt.expected) {
 				t.Errorf("FlagParser.Parse() = %+v, want %+v", config, tt.expected)
@@ -829,16 +829,16 @@ func TestInputChecker(t *testing.T) {
 		},
 	}
 
-	ic := &InputChecker{}
+	ic := &inputChecker{}
 	mockLogger := &MockLogger{}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reader := strings.NewReader(tt.input)
-			result := ic.CheckAvailability(mockLogger, reader)
+			result := ic.checkAvailability(mockLogger, reader)
 
 			if result != tt.expected {
-				t.Errorf("InputChecker.CheckAvailability() = %v, want %v", result, tt.expected)
+				t.Errorf("inputChecker.CheckAvailability() = %v, want %v", result, tt.expected)
 			}
 		})
 	}
@@ -846,7 +846,7 @@ func TestInputChecker(t *testing.T) {
 
 // TestPathParser tests path parsing functionality
 func TestPathParser(t *testing.T) {
-	pp := &PathParser{}
+	pp := &pathParser{}
 
 	tests := []struct {
 		name     string
@@ -870,14 +870,14 @@ func TestPathParser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := pp.Parse(tt.input)
+			result := pp.parse(tt.input)
 			if !reflect.DeepEqual(result, tt.expected) {
-				t.Errorf("PathParser.Parse() = %v, want %v", result, tt.expected)
+				t.Errorf("pathParser.Parse() = %v, want %v", result, tt.expected)
 			}
 
-			isJSON := pp.IsJSON(tt.input)
+			isJSON := pp.isJSON(tt.input)
 			if isJSON != tt.isJSON {
-				t.Errorf("PathParser.IsJSON() = %v, want %v", isJSON, tt.isJSON)
+				t.Errorf("pathParser.IsJSON() = %v, want %v", isJSON, tt.isJSON)
 			}
 		})
 	}
@@ -906,9 +906,9 @@ func TestInputReader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			reader := strings.NewReader(tt.input)
 			mockLogger := &MockLogger{}
-			ir := NewInputReader()
+			ir := newInputReader()
 
-			result := ir.ReadPaths(mockLogger, reader)
+			result := ir.readPaths(mockLogger, reader)
 
 			if !reflect.DeepEqual(result, tt.expected) {
 				t.Errorf("InputReader.ReadPaths() = %v, want %v", result, tt.expected)
@@ -947,14 +947,14 @@ func TestFileValidator(t *testing.T) {
 		},
 	}
 
-	fv := &FileValidator{}
+	fv := &fileValidator{}
 	mockLogger := &MockLogger{}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := fv.ShouldProcess(tt.filePath, mockLogger)
+			result := fv.shouldProcess(tt.filePath, mockLogger)
 			if result != tt.expected {
-				t.Errorf("FileValidator.ShouldProcess() = %v, want %v", result, tt.expected)
+				t.Errorf("fileValidator.ShouldProcess() = %v, want %v", result, tt.expected)
 			}
 		})
 	}
@@ -984,7 +984,7 @@ func TestNewlineChecker(t *testing.T) {
 		},
 	}
 
-	nc := &NewlineChecker{}
+	nc := &newlineChecker{}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -997,7 +997,7 @@ func TestNewlineChecker(t *testing.T) {
 			}
 			defer file.Close()
 
-			needsNewline, err := nc.NeedsNewline(file)
+			needsNewline, err := nc.needsNewline(file)
 
 			if tt.expectError && err == nil {
 				t.Error("Expected error but got nil")
@@ -1006,7 +1006,7 @@ func TestNewlineChecker(t *testing.T) {
 				t.Errorf("Expected no error but got: %v", err)
 			}
 			if needsNewline != tt.expectedNeeds {
-				t.Errorf("NewlineChecker.NeedsNewline() = %v, want %v", needsNewline, tt.expectedNeeds)
+				t.Errorf("newlineChecker.NeedsNewline() = %v, want %v", needsNewline, tt.expectedNeeds)
 			}
 		})
 	}
@@ -1048,7 +1048,7 @@ func TestFileModifier(t *testing.T) {
 		},
 	}
 
-	fm := &FileModifier{}
+	fm := &fileModifier{}
 	mockLogger := &MockLogger{}
 
 	for _, tt := range tests {
@@ -1068,7 +1068,7 @@ func TestFileModifier(t *testing.T) {
 				t.Fatalf("Failed to seek to end of file: %v", err)
 			}
 
-			err = fm.AddNewline(file, testFile, mockLogger)
+			err = fm.addNewline(file, testFile, mockLogger)
 
 			if tt.expectError && err == nil {
 				t.Error("Expected error but got nil")
@@ -1112,7 +1112,7 @@ func TestFileProcessor(t *testing.T) {
 		},
 	}
 
-	fp := NewFileProcessor()
+	fp := newFileProcessor()
 	mockLogger := &MockLogger{}
 
 	for _, tt := range tests {
@@ -1120,7 +1120,7 @@ func TestFileProcessor(t *testing.T) {
 			testFile := filepath.Join(tempDir, "test.txt")
 			_ = os.WriteFile(testFile, []byte(tt.initialContent), 0o644)
 
-			err := fp.ProcessFile(testFile, mockLogger)
+			err := fp.processFile(testFile, mockLogger)
 
 			if tt.expectError && err == nil {
 				t.Error("Expected error but got nil")
@@ -1176,12 +1176,12 @@ func TestProgressLogger(t *testing.T) {
 		},
 	}
 
-	pl := &ProgressLogger{}
+	pl := &progressLogger{}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockLogger := &MockLogger{}
-			pl.LogProgress(mockLogger, tt.filePath, tt.current, tt.total)
+			pl.logProgress(mockLogger, tt.filePath, tt.current, tt.total)
 
 			if len(mockLogger.DebugMessages) == 0 {
 				t.Error("Expected debug message to be logged")
@@ -1233,15 +1233,15 @@ func TestErrorHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create ErrorHandler with buffer writer for testing
+			// Create errorHandler with buffer writer for testing
 			var errorBuffer bytes.Buffer
-			eh := &ErrorHandler{
+			eh := &errorHandler{
 				ErrorWriter: &errorBuffer,
 			}
 			mockLogger := &MockLogger{}
 
 			// Call HandleError
-			eh.HandleError(mockLogger, tt.filePath, fmt.Errorf("%s", tt.errorMsg))
+			eh.handleError(mockLogger, tt.filePath, fmt.Errorf("%s", tt.errorMsg))
 
 			// Check debug message was logged
 			if len(mockLogger.DebugMessages) == 0 {
@@ -1305,7 +1305,7 @@ func TestSingleFileProcessor(t *testing.T) {
 		},
 	}
 
-	sfp := NewSingleFileProcessor()
+	sfp := newSingleFileProcessor()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1313,7 +1313,7 @@ func TestSingleFileProcessor(t *testing.T) {
 			_ = os.WriteFile(testFile, []byte(tt.initialContent), 0o644)
 
 			mockLogger := &MockLogger{}
-			sfp.Process(mockLogger, testFile, tt.current, tt.total)
+			sfp.process(mockLogger, testFile, tt.current, tt.total)
 
 			// Verify progress was logged
 			if tt.expectMessages && len(mockLogger.DebugMessages) == 0 {
@@ -1346,7 +1346,7 @@ func TestSingleFileProcessor(t *testing.T) {
 
 // TestDisplayStrategy tests the display strategy functionality
 func TestTruncatedDisplayStrategy(t *testing.T) {
-	tds := &TruncatedDisplayStrategy{}
+	tds := &truncatedDisplayStrategy{}
 	mockLogger := &MockLogger{}
 
 	tests := []struct {
@@ -1372,7 +1372,7 @@ func TestTruncatedDisplayStrategy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockLogger.DebugMessages = nil // Reset
-			tds.Display(mockLogger, tt.lines, tt.maxLines)
+			tds.display(mockLogger, tt.lines, tt.maxLines)
 
 			if len(mockLogger.DebugMessages) != tt.expected {
 				t.Errorf("Expected %d debug messages, got %d", tt.expected, len(mockLogger.DebugMessages))
@@ -1429,15 +1429,15 @@ func TestLineDisplayer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ld := NewLineDisplayer()
+			ld := newLineDisplayer()
 			mockLogger := &MockLogger{}
 
 			if tt.useCustomStrategy {
-				customStrategy := &TruncatedDisplayStrategy{}
-				ld.SetStrategy(customStrategy)
+				customStrategy := &truncatedDisplayStrategy{}
+				ld.setStrategy(customStrategy)
 			}
 
-			ld.Display(mockLogger, tt.lines, tt.maxLines)
+			ld.display(mockLogger, tt.lines, tt.maxLines)
 
 			if len(mockLogger.DebugMessages) != tt.expectedMessages {
 				t.Errorf("Expected %d debug messages, got %d", tt.expectedMessages, len(mockLogger.DebugMessages))
@@ -1462,7 +1462,7 @@ func TestLineDisplayer(t *testing.T) {
 
 // TestTextParsers tests the text parser implementations
 func TestJSONTextParser(t *testing.T) {
-	jtp := &JSONTextParser{}
+	jtp := &jsonTextParser{}
 
 	tests := []struct {
 		name     string
@@ -1486,14 +1486,14 @@ func TestJSONTextParser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			canParse := jtp.CanParse(tt.input)
+			canParse := jtp.canParse(tt.input)
 			if canParse != tt.canParse {
-				t.Errorf("JSONTextParser.CanParse() = %v, want %v", canParse, tt.canParse)
+				t.Errorf("jsonTextParser.CanParse() = %v, want %v", canParse, tt.canParse)
 			}
 
-			result := jtp.Parse(tt.input)
+			result := jtp.parse(tt.input)
 			if !reflect.DeepEqual(result, tt.expected) {
-				t.Errorf("JSONTextParser.Parse() = %v, want %v", result, tt.expected)
+				t.Errorf("jsonTextParser.Parse() = %v, want %v", result, tt.expected)
 			}
 		})
 	}
@@ -1501,11 +1501,11 @@ func TestJSONTextParser(t *testing.T) {
 
 // TestPlainTextParser tests plain text parsing
 func TestPlainTextParser(t *testing.T) {
-	ptp := &PlainTextParser{}
+	ptp := &plainTextParser{}
 
-	// PlainTextParser should always return true for CanParse
-	if !ptp.CanParse("anything") {
-		t.Error("PlainTextParser.CanParse() should always return true")
+	// plainTextParser should always return true for CanParse
+	if !ptp.canParse("anything") {
+		t.Error("plainTextParser.CanParse() should always return true")
 	}
 
 	tests := []struct {
@@ -1532,9 +1532,9 @@ func TestPlainTextParser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ptp.Parse(tt.input)
+			result := ptp.parse(tt.input)
 			if !reflect.DeepEqual(result, tt.expected) {
-				t.Errorf("PlainTextParser.Parse() = %v, want %v", result, tt.expected)
+				t.Errorf("plainTextParser.Parse() = %v, want %v", result, tt.expected)
 			}
 		})
 	}
@@ -1542,7 +1542,7 @@ func TestPlainTextParser(t *testing.T) {
 
 // TestCompositeTextParser tests the composite parser functionality
 func TestCompositeTextParser(t *testing.T) {
-	ctp := NewCompositeTextParser()
+	ctp := newCompositeTextParser()
 
 	tests := []struct {
 		name     string
@@ -1573,7 +1573,7 @@ func TestCompositeTextParser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ctp.Parse(tt.input)
+			result := ctp.parse(tt.input)
 			if !reflect.DeepEqual(result, tt.expected) {
 				t.Errorf("CompositeTextParser.Parse() = %v, want %v", result, tt.expected)
 			}
@@ -1581,11 +1581,11 @@ func TestCompositeTextParser(t *testing.T) {
 	}
 
 	// Test AddParser functionality
-	customParser := &PlainTextParser{}
-	ctp.AddParser(customParser)
+	customParser := &plainTextParser{}
+	ctp.addParser(customParser)
 
 	// Parser should still work after adding custom parser
-	result := ctp.Parse("/test.txt")
+	result := ctp.parse("/test.txt")
 	expected := []string{"/test.txt"}
 	if !reflect.DeepEqual(result, expected) {
 		t.Errorf("CompositeTextParser.Parse() after AddParser = %v, want %v", result, expected)

@@ -23,34 +23,34 @@ var (
 // newlineByte represents the byte value of a newline character (\n)
 const newlineByte = 0x0a
 
-// Config holds the configuration options for the tool
-type Config struct {
+// config holds the configuration options for the tool
+type config struct {
 	// Debug enables detailed processing information output
 	Debug bool
 	// Silent disables all output when processing files
 	Silent bool
 }
 
-// Logger defines the unified logging interface
-type Logger interface {
-	// Print outputs a regular message (respects silent mode)
-	Print(format string, args ...any)
-	// Debug outputs debug information (only when debug mode is enabled)
-	Debug(format string, args ...any)
-	// DebugSection starts a new debug section with a title
-	DebugSection(title string)
-	// DebugEnd closes a debug section
-	DebugEnd()
+// logger defines the unified logging interface
+type logger interface {
+	// log outputs a regular message (respects silent mode)
+	log(format string, args ...any)
+	// debug outputs debug information (only when debug mode is enabled)
+	debug(format string, args ...any)
+	// debugSection starts a new debug section with a title
+	debugSection(title string)
+	// debugEnd closes a debug section
+	debugEnd()
 }
 
-// ConsoleLogger implements Logger interface for console output
-type ConsoleLogger struct {
-	config *Config
+// consoleLogger implements logger interface for console output
+type consoleLogger struct {
+	config *config
 }
 
-// NewConsoleLogger creates a new console logger with the given configuration
-func NewConsoleLogger(config *Config) Logger {
-	return &ConsoleLogger{config: config}
+// newConsoleLogger creates a new console logger with the given configuration
+func newConsoleLogger(config *config) logger {
+	return &consoleLogger{config: config}
 }
 
 // usage prints the program usage information
@@ -74,42 +74,42 @@ func defineBoolFlag(p *bool, short, long string, usage string) {
 	flag.BoolVar(p, long, false, usage)
 }
 
-// VersionHandler handles version display
-type VersionHandler struct{}
+// versionHandler handles version display
+type versionHandler struct{}
 
 // ShowVersion displays version information and exits
-func (v *VersionHandler) ShowVersion() {
+func (v *versionHandler) showVersion() {
 	fmt.Printf("ccnewline %s (Built on %s from Git SHA %s)\n", version, date, commit)
 	os.Exit(0)
 }
 
-// ArgumentValidator validates command line arguments
-type ArgumentValidator struct{}
+// argumentValidator validates command line arguments
+type argumentValidator struct{}
 
 // ValidateArgs checks that no positional arguments were provided
-func (av *ArgumentValidator) ValidateArgs() error {
+func (av *argumentValidator) validateArgs() error {
 	if flag.NArg() > 0 {
 		return fmt.Errorf("unexpected arguments")
 	}
 	return nil
 }
 
-// FlagParser handles flag parsing
-type FlagParser struct {
-	versionHandler *VersionHandler
-	argValidator   *ArgumentValidator
+// flagParser handles flag parsing
+type flagParser struct {
+	versionHandler *versionHandler
+	argValidator   *argumentValidator
 }
 
-// NewFlagParser creates a new flag parser
-func NewFlagParser() *FlagParser {
-	return &FlagParser{
-		versionHandler: &VersionHandler{},
-		argValidator:   &ArgumentValidator{},
+// NewflagParser creates a new flag parser
+func newFlagParser() *flagParser {
+	return &flagParser{
+		versionHandler: &versionHandler{},
+		argValidator:   &argumentValidator{},
 	}
 }
 
 // Parse parses command line flags and returns configuration
-func (fp *FlagParser) Parse() *Config {
+func (fp *flagParser) parse() *config {
 	flag.Usage = usage
 
 	var debug, silent, showVersion bool
@@ -120,32 +120,32 @@ func (fp *FlagParser) Parse() *Config {
 
 	// Handle version flag
 	if showVersion {
-		fp.versionHandler.ShowVersion()
+		fp.versionHandler.showVersion()
 	}
 
 	// Validate arguments
-	if err := fp.argValidator.ValidateArgs(); err != nil {
+	if err := fp.argValidator.validateArgs(); err != nil {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	return &Config{Debug: debug, Silent: silent}
+	return &config{Debug: debug, Silent: silent}
 }
 
 // parseFlags parses command line flags and returns configuration or exits on error
-func parseFlags() *Config {
-	parser := NewFlagParser()
-	return parser.Parse()
+func parseFlags() *config {
+	parser := newFlagParser()
+	return parser.parse()
 }
 
 // run executes the main processing logic with the given configuration and input
-func run(config *Config, input io.Reader) {
-	logger := NewConsoleLogger(config)
+func run(config *config, input io.Reader) {
+	logger := newConsoleLogger(config)
 	filePaths := readFilePathsFromReader(logger, input)
 	if len(filePaths) == 0 {
-		logger.DebugSection("RESULT")
-		logger.Debug("No files to process")
-		logger.DebugEnd()
+		logger.debugSection("RESULT")
+		logger.debug("No files to process")
+		logger.debugEnd()
 		return
 	}
 
@@ -153,69 +153,69 @@ func run(config *Config, input io.Reader) {
 }
 
 // processFiles handles the processing of multiple files with debug output
-func processFiles(logger Logger, filePaths []string) {
-	logger.DebugSection("PROCESSING")
-	logger.Debug("Total files to process: %d", len(filePaths))
+func processFiles(logger logger, filePaths []string) {
+	logger.debugSection("PROCESSING")
+	logger.debug("Total files to process: %d", len(filePaths))
 
 	for i, filePath := range filePaths {
 		processSingleFile(logger, filePath, i+1, len(filePaths))
 	}
 
-	logger.DebugEnd()
+	logger.debugEnd()
 }
 
-// ErrorHandler handles error processing and reporting
-type ErrorHandler struct {
+// errorHandler handles error processing and reporting
+type errorHandler struct {
 	ErrorWriter io.Writer
 }
 
-// NewErrorHandler creates a new error handler with stderr as default writer
-func NewErrorHandler() *ErrorHandler {
-	return &ErrorHandler{
+// NewerrorHandler creates a new error handler with stderr as default writer
+func newErrorHandler() *errorHandler {
+	return &errorHandler{
 		ErrorWriter: os.Stderr,
 	}
 }
 
 // HandleError handles processing errors
-func (eh *ErrorHandler) HandleError(logger Logger, filePath string, err error) {
-	logger.Debug("Error: %v", err)
+func (eh *errorHandler) handleError(logger logger, filePath string, err error) {
+	logger.debug("Error: %v", err)
 	fmt.Fprintf(eh.ErrorWriter, "Error processing %s: %v\n", filePath, err)
 }
 
-// ProgressLogger handles progress logging
-type ProgressLogger struct{}
+// progressLogger handles progress logging
+type progressLogger struct{}
 
 // LogProgress logs file processing progress
-func (pl *ProgressLogger) LogProgress(logger Logger, filePath string, current, total int) {
-	logger.Debug("[%d/%d] Processing: %s", current, total, filePath)
+func (pl *progressLogger) logProgress(logger logger, filePath string, current, total int) {
+	logger.debug("[%d/%d] Processing: %s", current, total, filePath)
 }
 
-// SingleFileProcessor handles single file processing
-type SingleFileProcessor struct {
-	progressLogger *ProgressLogger
-	errorHandler   *ErrorHandler
+// singleFileProcessor handles single file processing
+type singleFileProcessor struct {
+	progressLogger *progressLogger
+	errorHandler   *errorHandler
 }
 
-// NewSingleFileProcessor creates a new single file processor
-func NewSingleFileProcessor() *SingleFileProcessor {
-	return &SingleFileProcessor{
-		progressLogger: &ProgressLogger{},
-		errorHandler:   NewErrorHandler(),
+// NewsingleFileProcessor creates a new single file processor
+func newSingleFileProcessor() *singleFileProcessor {
+	return &singleFileProcessor{
+		progressLogger: &progressLogger{},
+		errorHandler:   newErrorHandler(),
 	}
 }
 
 // Process processes a single file with progress logging and error handling
-func (sfp *SingleFileProcessor) Process(logger Logger, filePath string, current, total int) {
-	sfp.progressLogger.LogProgress(logger, filePath, current, total)
+func (sfp *singleFileProcessor) process(logger logger, filePath string, current, total int) {
+	sfp.progressLogger.logProgress(logger, filePath, current, total)
 	if err := addNewlineIfNeeded(filePath, logger); err != nil {
-		sfp.errorHandler.HandleError(logger, filePath, err)
+		sfp.errorHandler.handleError(logger, filePath, err)
 	}
 }
 
 // processSingleFile processes a single file and handles any errors
-func processSingleFile(logger Logger, filePath string, current, total int) {
-	processor := NewSingleFileProcessor()
-	processor.Process(logger, filePath, current, total)
+func processSingleFile(logger logger, filePath string, current, total int) {
+	processor := newSingleFileProcessor()
+	processor.process(logger, filePath, current, total)
 }
 
 // main is the entry point of the ccnewline tool
@@ -224,47 +224,47 @@ func main() {
 	run(config, os.Stdin)
 }
 
-// Print outputs a regular message (respects silent mode)
-func (l *ConsoleLogger) Print(format string, args ...any) {
+// log outputs a regular message (respects silent mode)
+func (l *consoleLogger) log(format string, args ...any) {
 	if !l.config.Silent && !l.config.Debug {
 		fmt.Printf(format, args...)
 	}
 }
 
-// Debug outputs debug information (only when debug mode is enabled)
-func (l *ConsoleLogger) Debug(format string, args ...any) {
+// debug outputs debug information (only when debug mode is enabled)
+func (l *consoleLogger) debug(format string, args ...any) {
 	if l.config.Debug {
 		fmt.Printf("│ "+format+"\n", args...)
 	}
 }
 
-// DebugSection starts a new debug section with a title
-func (l *ConsoleLogger) DebugSection(title string) {
+// debugSection starts a new debug section with a title
+func (l *consoleLogger) debugSection(title string) {
 	if l.config.Debug {
 		fmt.Printf("\n┌─ %s ─────────────────────────────────────────────────────────\n", title)
 	}
 }
 
-// DebugEnd closes a debug section
-func (l *ConsoleLogger) DebugEnd() {
+// debugEnd closes a debug section
+func (l *consoleLogger) debugEnd() {
 	if l.config.Debug {
 		fmt.Printf("└─────────────────────────────────────────────────────────────\n")
 	}
 }
 
-// DisplayStrategy defines how lines should be displayed
-type DisplayStrategy interface {
-	Display(logger Logger, lines []string, maxLines int)
+// displayStrategy defines how lines should be displayed
+type displayStrategy interface {
+	display(logger logger, lines []string, maxLines int)
 }
 
-// TruncatedDisplayStrategy shows lines with truncation for long inputs
-type TruncatedDisplayStrategy struct{}
+// truncatedDisplayStrategy shows lines with truncation for long inputs
+type truncatedDisplayStrategy struct{}
 
-// Display implements DisplayStrategy with truncation logic
-func (tds *TruncatedDisplayStrategy) Display(logger Logger, lines []string, maxLines int) {
+// Display implements displayStrategy with truncation logic
+func (tds *truncatedDisplayStrategy) display(logger logger, lines []string, maxLines int) {
 	if len(lines) <= maxLines {
 		for i, line := range lines {
-			logger.Debug("  Line %d: %s", i+1, line)
+			logger.debug("  Line %d: %s", i+1, line)
 		}
 		return
 	}
@@ -272,23 +272,23 @@ func (tds *TruncatedDisplayStrategy) Display(logger Logger, lines []string, maxL
 	showFirst := tds.calculateFirstLines(maxLines)
 
 	for i := 0; i < showFirst && i < len(lines); i++ {
-		logger.Debug("  Line %d: %s", i+1, lines[i])
+		logger.debug("  Line %d: %s", i+1, lines[i])
 	}
 
 	// Show omission indicator with count of hidden lines
 	omitted := len(lines) - maxLines
-	logger.Debug("  ... (%d lines omitted) ...", omitted)
+	logger.debug("  ... (%d lines omitted) ...", omitted)
 
 	// Show the last few lines after omission
 	showLast := maxLines - showFirst
 	start := len(lines) - showLast
 	for i := start; i < len(lines); i++ {
-		logger.Debug("  Line %d: %s", i+1, lines[i])
+		logger.debug("  Line %d: %s", i+1, lines[i])
 	}
 }
 
 // calculateFirstLines determines how many lines to show at the start
-func (tds *TruncatedDisplayStrategy) calculateFirstLines(maxLines int) int {
+func (tds *truncatedDisplayStrategy) calculateFirstLines(maxLines int) int {
 	switch {
 	case maxLines >= 5:
 		return 2
@@ -297,79 +297,79 @@ func (tds *TruncatedDisplayStrategy) calculateFirstLines(maxLines int) int {
 	}
 }
 
-// LineDisplayer handles line display operations
-type LineDisplayer struct {
-	strategy DisplayStrategy
+// lineDisplayer handles line display operations
+type lineDisplayer struct {
+	strategy displayStrategy
 }
 
-// NewLineDisplayer creates a new line displayer with truncated strategy
-func NewLineDisplayer() *LineDisplayer {
-	return &LineDisplayer{
-		strategy: &TruncatedDisplayStrategy{},
+// NewlineDisplayer creates a new line displayer with truncated strategy
+func newLineDisplayer() *lineDisplayer {
+	return &lineDisplayer{
+		strategy: &truncatedDisplayStrategy{},
 	}
 }
 
 // SetStrategy sets the display strategy
-func (ld *LineDisplayer) SetStrategy(strategy DisplayStrategy) {
+func (ld *lineDisplayer) setStrategy(strategy displayStrategy) {
 	ld.strategy = strategy
 }
 
 // Display displays lines using the configured strategy
-func (ld *LineDisplayer) Display(logger Logger, lines []string, maxLines int) {
-	ld.strategy.Display(logger, lines, maxLines)
+func (ld *lineDisplayer) display(logger logger, lines []string, maxLines int) {
+	ld.strategy.display(logger, lines, maxLines)
 }
 
 // displayLines prints a limited number of lines with truncation for long inputs.
 // For inputs longer than maxLines, it shows the first few and last few lines
 // with an omission indicator in between.
-func displayLines(logger Logger, lines []string, maxLines int) {
-	displayer := NewLineDisplayer()
-	displayer.Display(logger, lines, maxLines)
+func displayLines(logger logger, lines []string, maxLines int) {
+	displayer := newLineDisplayer()
+	displayer.display(logger, lines, maxLines)
 }
 
 // debugFileContents reads and displays the contents of a file in debug mode,
 // showing up to 5 lines with truncation for longer files
-func debugFileContents(logger Logger, filePath string) {
+func debugFileContents(logger logger, filePath string) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		logger.Debug("Failed to read file contents: %v", err)
+		logger.debug("Failed to read file contents: %v", err)
 		return
 	}
 
-	logger.Debug("File contents:")
+	logger.debug("File contents:")
 	lines := strings.Split(string(content), "\n")
 	displayLines(logger, lines, 5)
 }
 
-// TextParser defines the interface for parsing text input
-type TextParser interface {
-	Parse(inputText string) []string
-	CanParse(inputText string) bool
+// textParser defines the interface for parsing text input
+type textParser interface {
+	parse(inputText string) []string
+	canParse(inputText string) bool
 }
 
-// JSONTextParser handles JSON input parsing
-type JSONTextParser struct{}
+// jsonTextParser handles JSON input parsing
+type jsonTextParser struct{}
 
 // CanParse checks if the input can be parsed as JSON
-func (jtp *JSONTextParser) CanParse(inputText string) bool {
+func (jtp *jsonTextParser) canParse(inputText string) bool {
 	return len(extractFilePaths(inputText)) > 0
 }
 
 // Parse extracts paths from JSON input
-func (jtp *JSONTextParser) Parse(inputText string) []string {
+func (jtp *jsonTextParser) parse(inputText string) []string {
 	return extractFilePaths(inputText)
 }
 
-// PlainTextParser handles plain text input parsing
-type PlainTextParser struct{}
+// plainTextParser handles plain text input parsing
+type plainTextParser struct{}
 
 // CanParse always returns true as it's the fallback parser
-func (ptp *PlainTextParser) CanParse(inputText string) bool {
+func (ptp *plainTextParser) canParse(inputText string) bool {
 	return true
 }
 
 // Parse extracts paths from plain text input
-func (ptp *PlainTextParser) Parse(inputText string) []string {
+func (ptp *plainTextParser) parse(inputText string) []string {
 	lines := strings.Split(inputText, "\n")
 	var cleanLines []string
 	for _, line := range lines {
@@ -380,28 +380,28 @@ func (ptp *PlainTextParser) Parse(inputText string) []string {
 	return cleanLines
 }
 
-// CompositeTextParser chains multiple parsers
-type CompositeTextParser struct {
-	parsers []TextParser
+// compositeTextParser chains multiple parsers
+type compositeTextParser struct {
+	parsers []textParser
 }
 
-// NewCompositeTextParser creates a new composite parser with default parsers
-func NewCompositeTextParser() *CompositeTextParser {
-	return &CompositeTextParser{
-		parsers: []TextParser{
-			&JSONTextParser{},
-			&PlainTextParser{},
+// newCompositeTextParser creates a new composite parser with default parsers
+func newCompositeTextParser() *compositeTextParser {
+	return &compositeTextParser{
+		parsers: []textParser{
+			&jsonTextParser{},
+			&plainTextParser{},
 		},
 	}
 }
 
 // AddParser adds a new parser to the chain
-func (ctp *CompositeTextParser) AddParser(parser TextParser) {
+func (ctp *compositeTextParser) addParser(parser textParser) {
 	ctp.parsers = append(ctp.parsers, parser)
 }
 
 // Parse tries each parser in order until one succeeds
-func (ctp *CompositeTextParser) Parse(inputText string) []string {
+func (ctp *compositeTextParser) parse(inputText string) []string {
 	inputText = strings.TrimSpace(inputText)
 	if inputText == "" {
 		return nil
@@ -421,8 +421,8 @@ func (ctp *CompositeTextParser) Parse(inputText string) []string {
 
 	jsonText := strings.Join(cleanLines, "\n")
 	for _, parser := range ctp.parsers {
-		if parser.CanParse(jsonText) {
-			if paths := parser.Parse(jsonText); len(paths) > 0 {
+		if parser.canParse(jsonText) {
+			if paths := parser.parse(jsonText); len(paths) > 0 {
 				return paths
 			}
 		}
@@ -434,98 +434,98 @@ func (ctp *CompositeTextParser) Parse(inputText string) []string {
 // parseFilePathsFromText is a pure function that extracts file paths from input text.
 // It attempts JSON parsing first, then falls back to plain text parsing.
 func parseFilePathsFromText(inputText string) []string {
-	parser := NewCompositeTextParser()
-	return parser.Parse(inputText)
+	parser := newCompositeTextParser()
+	return parser.parse(inputText)
 }
 
-// InputReader handles reading and parsing input
-type InputReader struct {
-	inputChecker *InputChecker
-	pathParser   *PathParser
+// inputReader handles reading and parsing input
+type inputReader struct {
+	inputChecker *inputChecker
+	pathParser   *pathParser
 }
 
-// NewInputReader creates a new input reader
-func NewInputReader() *InputReader {
-	return &InputReader{
-		inputChecker: &InputChecker{},
-		pathParser:   &PathParser{},
+// NewinputReader creates a new input reader
+func newInputReader() *inputReader {
+	return &inputReader{
+		inputChecker: &inputChecker{},
+		pathParser:   &pathParser{},
 	}
 }
 
-// InputChecker handles input validation
-type InputChecker struct{}
+// inputChecker handles input validation
+type inputChecker struct{}
 
 // CheckAvailability checks if input is available from the reader
-func (ic *InputChecker) CheckAvailability(logger Logger, input io.Reader) bool {
+func (ic *inputChecker) checkAvailability(logger logger, input io.Reader) bool {
 	return hasInputAvailable(logger, input)
 }
 
-// PathParser handles path extraction and parsing
-type PathParser struct{}
+// pathParser handles path extraction and parsing
+type pathParser struct{}
 
 // Parse extracts paths from input text
-func (pp *PathParser) Parse(inputText string) []string {
+func (pp *pathParser) parse(inputText string) []string {
 	return parseFilePathsFromText(inputText)
 }
 
 // IsJSON checks if the parsing was done using JSON
-func (pp *PathParser) IsJSON(inputText string) bool {
+func (pp *pathParser) isJSON(inputText string) bool {
 	return extractFilePaths(inputText) != nil
 }
 
 // ReadPaths reads and extracts file paths from input
-func (ir *InputReader) ReadPaths(logger Logger, input io.Reader) []string {
-	if !ir.inputChecker.CheckAvailability(logger, input) {
+func (ir *inputReader) readPaths(logger logger, input io.Reader) []string {
+	if !ir.inputChecker.checkAvailability(logger, input) {
 		return nil
 	}
 
-	logger.DebugSection("INPUT PARSING")
+	logger.debugSection("INPUT PARSING")
 	lines := readInputLines(input)
 
 	if len(lines) == 0 {
-		logger.Debug("Empty input")
-		logger.DebugEnd()
+		logger.debug("Empty input")
+		logger.debugEnd()
 		return nil
 	}
 
-	logger.Debug("Input received (%d lines):", len(lines))
+	logger.debug("Input received (%d lines):", len(lines))
 	displayLines(logger, lines, 3)
 
 	inputText := strings.Join(lines, "\n")
-	paths := ir.pathParser.Parse(inputText)
+	paths := ir.pathParser.parse(inputText)
 
 	if len(paths) > 0 {
-		if ir.pathParser.IsJSON(inputText) {
-			logger.Debug("JSON parsing successful")
+		if ir.pathParser.isJSON(inputText) {
+			logger.debug("JSON parsing successful")
 		} else {
-			logger.Debug("JSON parsing failed, treating as plain text")
+			logger.debug("JSON parsing failed, treating as plain text")
 		}
-		logger.Debug("Extracted file paths:")
+		logger.debug("Extracted file paths:")
 		for i, path := range paths {
-			logger.Debug("  [%d] %s", i+1, path)
+			logger.debug("  [%d] %s", i+1, path)
 		}
 	}
 
-	logger.DebugEnd()
+	logger.debugEnd()
 	return paths
 }
 
 // readFilePathsFromReader reads JSON input from the given reader and extracts file paths from
 // Claude Code tool outputs. It first attempts JSON parsing to extract paths
 // from tool_input fields, falling back to plain text parsing if JSON fails.
-func readFilePathsFromReader(logger Logger, input io.Reader) []string {
-	reader := NewInputReader()
-	return reader.ReadPaths(logger, input)
+func readFilePathsFromReader(logger logger, input io.Reader) []string {
+	reader := newInputReader()
+	return reader.readPaths(logger, input)
 }
 
 // hasInputAvailable checks if input is available from the reader
-func hasInputAvailable(logger Logger, input io.Reader) bool {
+func hasInputAvailable(logger logger, input io.Reader) bool {
 	if input == os.Stdin {
 		stat, err := os.Stdin.Stat()
 		if err != nil || (stat.Mode()&os.ModeCharDevice) != 0 {
-			logger.DebugSection("INPUT PARSING")
-			logger.Debug("No stdin input available")
-			logger.DebugEnd()
+			logger.debugSection("INPUT PARSING")
+			logger.debug("No stdin input available")
+			logger.debugEnd()
 			return false
 		}
 	}
@@ -630,49 +630,49 @@ func isFileEmpty(filePath string) bool {
 	return info.Size() == 0
 }
 
-// FileProcessor handles file processing operations
-type FileProcessor struct {
-	validator *FileValidator
-	checker   *NewlineChecker
-	modifier  *FileModifier
+// fileProcessor handles file processing operations
+type fileProcessor struct {
+	validator *fileValidator
+	checker   *newlineChecker
+	modifier  *fileModifier
 }
 
-// NewFileProcessor creates a new file processor
-func NewFileProcessor() *FileProcessor {
-	return &FileProcessor{
-		validator: &FileValidator{},
-		checker:   &NewlineChecker{},
-		modifier:  &FileModifier{},
+// NewfileProcessor creates a new file processor
+func newFileProcessor() *fileProcessor {
+	return &fileProcessor{
+		validator: &fileValidator{},
+		checker:   &newlineChecker{},
+		modifier:  &fileModifier{},
 	}
 }
 
-// FileValidator handles file validation
-type FileValidator struct{}
+// fileValidator handles file validation
+type fileValidator struct{}
 
 // ShouldProcess checks if a file should be processed
-func (fv *FileValidator) ShouldProcess(filePath string, logger Logger) bool {
+func (fv *fileValidator) shouldProcess(filePath string, logger logger) bool {
 	return shouldProcessFile(filePath, logger)
 }
 
-// NewlineChecker handles newline checking
-type NewlineChecker struct{}
+// newlineChecker handles newline checking
+type newlineChecker struct{}
 
 // NeedsNewline checks if a file needs a newline
-func (nc *NewlineChecker) NeedsNewline(file *os.File) (bool, error) {
+func (nc *newlineChecker) needsNewline(file *os.File) (bool, error) {
 	return checkLastByte(file)
 }
 
-// FileModifier handles file modifications
-type FileModifier struct{}
+// fileModifier handles file modifications
+type fileModifier struct{}
 
 // AddNewline adds a newline to a file
-func (fm *FileModifier) AddNewline(file *os.File, filePath string, logger Logger) error {
+func (fm *fileModifier) addNewline(file *os.File, filePath string, logger logger) error {
 	return addNewlineToFile(file, filePath, logger)
 }
 
 // ProcessFile processes a single file for newline addition
-func (fp *FileProcessor) ProcessFile(filePath string, logger Logger) error {
-	if !fp.validator.ShouldProcess(filePath, logger) {
+func (fp *fileProcessor) processFile(filePath string, logger logger) error {
+	if !fp.validator.shouldProcess(filePath, logger) {
 		return nil
 	}
 
@@ -682,16 +682,16 @@ func (fp *FileProcessor) ProcessFile(filePath string, logger Logger) error {
 	}
 	defer file.Close()
 
-	needsNewline, err := fp.checker.NeedsNewline(file)
+	needsNewline, err := fp.checker.needsNewline(file)
 	if err != nil {
 		return err
 	}
 
 	if needsNewline {
-		return fp.modifier.AddNewline(file, filePath, logger)
+		return fp.modifier.addNewline(file, filePath, logger)
 	}
 
-	logger.Debug("Already ends with newline")
+	logger.debug("Already ends with newline")
 	debugFileContents(logger, filePath)
 	return nil
 }
@@ -699,20 +699,20 @@ func (fp *FileProcessor) ProcessFile(filePath string, logger Logger) error {
 // addNewlineIfNeeded checks if a file ends with a newline character and adds
 // one if missing. It skips non-existent or empty files and only modifies files
 // that don't end with a newline (0x0a byte).
-func addNewlineIfNeeded(filePath string, logger Logger) error {
-	processor := NewFileProcessor()
-	return processor.ProcessFile(filePath, logger)
+func addNewlineIfNeeded(filePath string, logger logger) error {
+	processor := newFileProcessor()
+	return processor.processFile(filePath, logger)
 }
 
 // shouldProcessFile checks if the file exists and is not empty
-func shouldProcessFile(filePath string, logger Logger) bool {
+func shouldProcessFile(filePath string, logger logger) bool {
 	info, err := os.Stat(filePath)
 	if err != nil {
-		logger.Debug("File does not exist, skipping")
+		logger.debug("File does not exist, skipping")
 		return false
 	}
 	if info.Size() == 0 {
-		logger.Debug("File is empty, skipping")
+		logger.debug("File is empty, skipping")
 		return false
 	}
 	return true
@@ -735,14 +735,14 @@ func checkLastByte(file *os.File) (bool, error) {
 }
 
 // addNewlineToFile appends a newline to the file and handles output
-func addNewlineToFile(file *os.File, filePath string, logger Logger) error {
-	logger.Debug("Adding newline (missing)")
+func addNewlineToFile(file *os.File, filePath string, logger logger) error {
+	logger.debug("Adding newline (missing)")
 	debugFileContents(logger, filePath)
 
 	_, err := file.Write([]byte{newlineByte})
 	if err == nil {
-		logger.Debug("Newline added successfully")
-		logger.Print("Added newline to %s\n", filePath)
+		logger.debug("Newline added successfully")
+		logger.log("Added newline to %s\n", filePath)
 	}
 	return err
 }
