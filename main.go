@@ -327,20 +327,6 @@ func displayLines(logger logger, lines []string, maxLines int) {
 	displayer.display(logger, lines, maxLines)
 }
 
-// debugFileContents reads and displays the contents of a file in debug mode,
-// showing up to 5 lines with truncation for longer files
-func debugFileContents(logger logger, filePath string) {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		logger.debug("Failed to read file contents: %v", err)
-		return
-	}
-
-	logger.debug("File contents:")
-	lines := strings.Split(string(content), "\n")
-	displayLines(logger, lines, 5)
-}
-
 // textParser defines the interface for parsing text input
 type textParser interface {
 	parse(inputText string) []string
@@ -692,7 +678,6 @@ func (fp *fileProcessor) processFile(filePath string, logger logger) error {
 	}
 
 	logger.debug("Already ends with newline")
-	debugFileContents(logger, filePath)
 	return nil
 }
 
@@ -737,7 +722,6 @@ func checkLastByte(file *os.File) (bool, error) {
 // addNewlineToFile appends a newline to the file and handles output
 func addNewlineToFile(file *os.File, filePath string, logger logger) error {
 	logger.debug("Adding newline (missing)")
-	debugFileContents(logger, filePath)
 
 	_, err := file.Write([]byte{newlineByte})
 	if err == nil {

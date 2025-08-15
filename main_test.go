@@ -1592,49 +1592,6 @@ func TestCompositeTextParser(t *testing.T) {
 	}
 }
 
-// TestDebugFileContentsErrorHandling tests debugFileContents with file read errors
-func TestDebugFileContentsErrorHandling(t *testing.T) {
-	tempDir := t.TempDir()
-
-	tests := []struct {
-		name             string
-		filePath         string
-		expectedErrorMsg string
-	}{
-		{
-			name:             "non-existent file",
-			filePath:         "/nonexistent/file.txt",
-			expectedErrorMsg: "Failed to read file contents",
-		},
-		{
-			name:             "directory instead of file",
-			filePath:         tempDir,
-			expectedErrorMsg: "Failed to read file contents",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockLogger := &MockLogger{}
-
-			debugFileContents(mockLogger, tt.filePath)
-
-			// Verify that debug message was logged about the failure
-			found := false
-			for _, msg := range mockLogger.DebugMessages {
-				if strings.Contains(msg, tt.expectedErrorMsg) {
-					found = true
-					break
-				}
-			}
-
-			if !found {
-				t.Errorf("Expected debug message containing %q", tt.expectedErrorMsg)
-			}
-		})
-	}
-}
-
 // TestReadInputLinesTrailingEmptyLines tests readInputLines with trailing empty lines
 func TestReadInputLinesTrailingEmptyLines(t *testing.T) {
 	tests := []struct {
