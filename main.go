@@ -20,8 +20,27 @@ var (
 	date    = "unknown"
 )
 
-// newlineByte represents the byte value of a newline character (\n)
-const newlineByte = 0x0a
+// Constants for file processing
+const (
+	// newlineByte represents the byte value of a newline character (\n)
+	newlineByte = 0x0a
+
+	// maxDisplayLines is the maximum number of lines to display in debug output
+	// before truncation occurs
+	maxDisplayLines = 3
+
+	// truncateThresholdSmall is the threshold for showing first lines in small truncation
+	truncateThresholdSmall = 5
+
+	// truncateShowFirstSmall is the number of first lines to show in small truncation
+	truncateShowFirstSmall = 2
+
+	// truncateShowFirstDefault is the default number of first lines to show
+	truncateShowFirstDefault = 1
+
+	// filePermission is the default file permission for opening files
+	filePermission = 0o644
+)
 
 // config holds the configuration options for the tool
 type config struct {
@@ -290,10 +309,10 @@ func (tds *truncatedDisplayStrategy) display(logger logger, lines []string, maxL
 // calculateFirstLines determines how many lines to show at the start
 func (tds *truncatedDisplayStrategy) calculateFirstLines(maxLines int) int {
 	switch {
-	case maxLines >= 5:
-		return 2
+	case maxLines >= truncateThresholdSmall:
+		return truncateShowFirstSmall
 	default:
-		return 1
+		return truncateShowFirstDefault
 	}
 }
 
@@ -475,7 +494,7 @@ func (ir *inputReader) readPaths(logger logger, input io.Reader) []string {
 	}
 
 	logger.debug("Input received (%d lines):", len(lines))
-	displayLines(logger, lines, 3)
+	displayLines(logger, lines, maxDisplayLines)
 
 	inputText := strings.Join(lines, "\n")
 	paths := ir.pathParser.parse(inputText)
@@ -662,7 +681,7 @@ func (fp *fileProcessor) processFile(filePath string, logger logger) error {
 		return nil
 	}
 
-	file, err := os.OpenFile(filePath, os.O_RDWR, 0o644)
+	file, err := os.OpenFile(filePath, os.O_RDWR, filePermission)
 	if err != nil {
 		return err
 	}
