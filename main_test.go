@@ -3,13 +3,59 @@ package main
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
+
+// MockLogger implements Logger interface for testing
+type MockLogger struct {
+	Messages      []string
+	DebugMessages []string
+	Sections      []string
+	Separators    int
+}
+
+// Log records regular messages
+func (m *MockLogger) Log(format string, args ...any) {
+	m.Messages = append(m.Messages, fmt.Sprintf(format, args...))
+}
+
+// Debug records debug messages
+func (m *MockLogger) Debug(format string, args ...any) {
+	m.DebugMessages = append(m.DebugMessages, fmt.Sprintf(format, args...))
+}
+
+// DebugSection records section starts
+func (m *MockLogger) DebugSection(title string) {
+	m.Sections = append(m.Sections, title)
+}
+
+// DebugSeparator counts separators
+func (m *MockLogger) DebugSeparator() {
+	m.Separators++
+}
+
+// captureOutput captures stdout during function execution
+func captureOutput(f func()) string {
+	oldStdout := os.Stdout
+	defer func() { os.Stdout = oldStdout }()
+
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	f()
+	w.Close()
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	return buf.String()
+}
 
 func TestExtractFilePaths(t *testing.T) {
 	tests := []struct {
@@ -161,7 +207,8 @@ func TestAddNewlineIfNeeded(t *testing.T) {
 			}
 
 			config := &Config{Debug: tt.debugMode, Silent: false}
-			err := addNewlineIfNeeded(testFile, config)
+			logger := NewConsoleLogger(config)
+			err := addNewlineIfNeeded(testFile, logger)
 
 			if tt.expectError && err == nil {
 				t.Error("Expected error, but got none")
@@ -191,7 +238,8 @@ func TestAddNewlineIfNeeded(t *testing.T) {
 	// Error handling scenarios
 	t.Run("non-existent file", func(t *testing.T) {
 		config := &Config{Debug: false, Silent: false}
-		err := addNewlineIfNeeded("/nonexistent/file.txt", config)
+		logger := NewConsoleLogger(config)
+		err := addNewlineIfNeeded("/nonexistent/file.txt", logger)
 		if err != nil {
 			t.Errorf("Expected no error for non-existent file, got: %v", err)
 		}
@@ -199,7 +247,8 @@ func TestAddNewlineIfNeeded(t *testing.T) {
 
 	t.Run("directory instead of file", func(t *testing.T) {
 		config := &Config{Debug: false, Silent: false}
-		err := addNewlineIfNeeded(tempDir, config)
+		logger := NewConsoleLogger(config)
+		err := addNewlineIfNeeded(tempDir, logger)
 		if err == nil {
 			t.Error("Expected error when processing directory, got nil")
 		}
@@ -219,7 +268,8 @@ func TestAddNewlineIfNeeded(t *testing.T) {
 		}
 
 		config := &Config{Debug: false, Silent: false}
-		err = addNewlineIfNeeded(testFile, config)
+		logger := NewConsoleLogger(config)
+		err = addNewlineIfNeeded(testFile, logger)
 		if err == nil {
 			t.Error("Expected error when trying to append to read-only file, got nil")
 		}
@@ -305,7 +355,8 @@ func TestReadFilePaths(t *testing.T) {
 			}
 
 			config := &Config{Debug: false}
-			result := readFilePaths(config)
+			logger := NewConsoleLogger(config)
+			result := readFilePaths(logger)
 
 			if !reflect.DeepEqual(result, tt.expected) {
 				t.Errorf("readFilePaths() = %v, want %v", result, tt.expected)
@@ -369,7 +420,8 @@ func TestOutputModes(t *testing.T) {
 
 			// Test the function directly
 			config := &Config{Debug: tt.debug, Silent: tt.silent}
-			err = addNewlineIfNeeded(testFile, config)
+			logger := NewConsoleLogger(config)
+			err = addNewlineIfNeeded(testFile, logger)
 			if err != nil {
 				t.Fatalf("addNewlineIfNeeded failed: %v", err)
 			}
@@ -420,8 +472,18 @@ func TestParseFlags(t *testing.T) {
 			expected: &Config{Debug: true, Silent: false},
 		},
 		{
+			name:     "debug flag --debug",
+			args:     []string{"ccnewline", "--debug"},
+			expected: &Config{Debug: true, Silent: false},
+		},
+		{
 			name:     "silent flag -s",
 			args:     []string{"ccnewline", "-s"},
+			expected: &Config{Debug: false, Silent: true},
+		},
+		{
+			name:     "silent flag --silent",
+			args:     []string{"ccnewline", "--silent"},
 			expected: &Config{Debug: false, Silent: true},
 		},
 		{
@@ -445,6 +507,361 @@ func TestParseFlags(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseFilePathsFromText(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "JSON input with multiple path fields",
+			input:    `{"tool_input": {"path": "/path1", "file_path": "/path2", "paths": ["/path3", "/path4"]}}`,
+			expected: []string{"/path1", "/path2", "/path3", "/path4"},
+		},
+		{
+			name:     "JSON input with file_path only",
+			input:    `{"tool_input": {"file_path": "/test.txt"}}`,
+			expected: []string{"/test.txt"},
+		},
+		{
+			name:     "plain text input",
+			input:    "/file1.txt\n/file2.txt\n\n/file3.txt",
+			expected: []string{"/file1.txt", "/file2.txt", "/file3.txt"},
+		},
+		{
+			name:     "plain text with empty lines",
+			input:    "/file1.txt\n\n/file2.txt\n\n",
+			expected: []string{"/file1.txt", "/file2.txt"},
+		},
+		{
+			name:     "empty input",
+			input:    "",
+			expected: nil,
+		},
+		{
+			name:     "whitespace only",
+			input:    "   \n  \n",
+			expected: nil,
+		},
+		{
+			name:     "single file path",
+			input:    "/single/file.txt",
+			expected: []string{"/single/file.txt"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseFilePathsFromText(tt.input)
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("parseFilePathsFromText() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestReadFilePathsFromReader(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "JSON input with file_path",
+			input:    `{"tool_input": {"file_path": "/test.txt"}}`,
+			expected: []string{"/test.txt"},
+		},
+		{
+			name:     "plain text input",
+			input:    "/file1.txt\n/file2.txt",
+			expected: []string{"/file1.txt", "/file2.txt"},
+		},
+		{
+			name:     "empty input",
+			input:    "",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := strings.NewReader(tt.input)
+			mockLogger := &MockLogger{}
+
+			result := readFilePathsFromReader(mockLogger, reader)
+
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("readFilePathsFromReader() = %v, want %v", result, tt.expected)
+			}
+
+			// Verify logger was called for non-empty input
+			if tt.expected != nil && len(mockLogger.Sections) == 0 {
+				t.Error("Expected debug sections to be logged")
+			}
+		})
+	}
+}
+
+func TestReadFilePathsFromReaderWithDebugOutput(t *testing.T) {
+	input := `{"tool_input": {"file_path": "/test.txt"}}`
+	reader := strings.NewReader(input)
+	logger := NewConsoleLogger(&Config{Debug: true})
+
+	output := captureOutput(func() {
+		readFilePathsFromReader(logger, reader)
+	})
+
+	expectedStrings := []string{"INPUT PARSING", "JSON parsing successful"}
+	for _, expectedStr := range expectedStrings {
+		if !strings.Contains(output, expectedStr) {
+			t.Errorf("Expected debug output to contain '%s'", expectedStr)
+		}
+	}
+}
+
+func TestConsoleLogger(t *testing.T) {
+	tests := []struct {
+		name           string
+		config         *Config
+		message        string
+		action         func(Logger, string)
+		expectedOutput string
+	}{
+		{
+			name:           "Log in silent mode",
+			config:         &Config{Silent: true},
+			message:        "test message\n",
+			action:         func(l Logger, msg string) { l.Log(msg) },
+			expectedOutput: "",
+		},
+		{
+			name:           "Log in debug mode",
+			config:         &Config{Debug: true},
+			message:        "test message\n",
+			action:         func(l Logger, msg string) { l.Log(msg) },
+			expectedOutput: "",
+		},
+		{
+			name:           "Log in normal mode",
+			config:         &Config{},
+			message:        "test message\n",
+			action:         func(l Logger, msg string) { l.Log(msg) },
+			expectedOutput: "test message\n",
+		},
+		{
+			name:           "Debug without debug mode",
+			config:         &Config{Debug: false},
+			message:        "test",
+			action:         func(l Logger, msg string) { l.Debug(msg) },
+			expectedOutput: "",
+		},
+		{
+			name:           "Debug with debug mode",
+			config:         &Config{Debug: true},
+			message:        "debug message",
+			action:         func(l Logger, msg string) { l.Debug(msg) },
+			expectedOutput: "debug message",
+		},
+		{
+			name:           "DebugSection with debug mode",
+			config:         &Config{Debug: true},
+			message:        "TEST",
+			action:         func(l Logger, msg string) { l.DebugSection(msg) },
+			expectedOutput: "TEST",
+		},
+		{
+			name:           "DebugSeparator with debug mode",
+			config:         &Config{Debug: true},
+			message:        "",
+			action:         func(l Logger, msg string) { l.DebugSeparator() },
+			expectedOutput: "└",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := NewConsoleLogger(tt.config)
+			output := captureOutput(func() {
+				tt.action(logger, tt.message)
+			})
+
+			if tt.expectedOutput == "" {
+				if output != "" {
+					t.Errorf("Expected no output, got: %q", output)
+				}
+			} else {
+				if !strings.Contains(output, tt.expectedOutput) {
+					t.Errorf("Expected output to contain %q, got: %q", tt.expectedOutput, output)
+				}
+			}
+		})
+	}
+}
+
+func TestMockLogger(t *testing.T) {
+	tests := []struct {
+		name             string
+		actions          func(*MockLogger)
+		expectedMessages int
+		expectedDebug    int
+		expectedSections int
+		expectedSeps     int
+	}{
+		{
+			name: "captures all calls",
+			actions: func(m *MockLogger) {
+				m.Log("test log")
+				m.Debug("test debug")
+				m.DebugSection("TEST")
+				m.DebugSeparator()
+			},
+			expectedMessages: 1,
+			expectedDebug:    1,
+			expectedSections: 1,
+			expectedSeps:     1,
+		},
+		{
+			name: "multiple calls",
+			actions: func(m *MockLogger) {
+				m.Log("msg1")
+				m.Log("msg2")
+				m.Debug("debug1")
+				m.DebugSeparator()
+				m.DebugSeparator()
+			},
+			expectedMessages: 2,
+			expectedDebug:    1,
+			expectedSections: 0,
+			expectedSeps:     2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &MockLogger{}
+			tt.actions(mock)
+
+			if len(mock.Messages) != tt.expectedMessages {
+				t.Errorf("Expected %d messages, got %d", tt.expectedMessages, len(mock.Messages))
+			}
+			if len(mock.DebugMessages) != tt.expectedDebug {
+				t.Errorf("Expected %d debug messages, got %d", tt.expectedDebug, len(mock.DebugMessages))
+			}
+			if len(mock.Sections) != tt.expectedSections {
+				t.Errorf("Expected %d sections, got %d", tt.expectedSections, len(mock.Sections))
+			}
+			if mock.Separators != tt.expectedSeps {
+				t.Errorf("Expected %d separators, got %d", tt.expectedSeps, mock.Separators)
+			}
+		})
+	}
+}
+
+func TestFunctionsWithMockLogger(t *testing.T) {
+	tests := []struct {
+		name                 string
+		action               func(*MockLogger) (any, error)
+		expectedResult       any
+		expectedError        bool
+		expectedSections     []string
+		expectedDebugContent []string
+		expectedSeparators   int
+	}{
+		{
+			name: "processFiles logs correct debug info",
+			action: func(mock *MockLogger) (any, error) {
+				filePaths := []string{"/file1.txt", "/file2.txt"}
+				processFiles(mock, filePaths)
+				return nil, nil
+			},
+			expectedSections:   []string{"PROCESSING"},
+			expectedSeparators: 1,
+		},
+		{
+			name: "addNewlineIfNeeded with non-existent file",
+			action: func(mock *MockLogger) (any, error) {
+				err := addNewlineIfNeeded("/nonexistent/file.txt", mock)
+				return nil, err
+			},
+			expectedError:        false,
+			expectedDebugContent: []string{"does not exist"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &MockLogger{}
+			result, err := tt.action(mock)
+
+			// Check error expectation
+			if tt.expectedError && err == nil {
+				t.Error("Expected error, but got none")
+			} else if !tt.expectedError && err != nil {
+				t.Errorf("Expected no error, got: %v", err)
+			}
+
+			// Check result if specified
+			if tt.expectedResult != nil && !reflect.DeepEqual(result, tt.expectedResult) {
+				t.Errorf("Expected result %v, got %v", tt.expectedResult, result)
+			}
+
+			// Check sections
+			for _, expectedSection := range tt.expectedSections {
+				if !slices.Contains(mock.Sections, expectedSection) {
+					t.Errorf("Expected section '%s' to be logged", expectedSection)
+				}
+			}
+
+			// Check debug content
+			for _, expectedContent := range tt.expectedDebugContent {
+				found := false
+				for _, msg := range mock.DebugMessages {
+					if strings.Contains(msg, expectedContent) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected debug message containing '%s'", expectedContent)
+				}
+			}
+
+			// Check separators
+			if tt.expectedSeparators > 0 && mock.Separators < tt.expectedSeparators {
+				t.Errorf("Expected at least %d separators, got %d", tt.expectedSeparators, mock.Separators)
+			}
+		})
+	}
+
+	// Special test for shouldProcessFile with empty file
+	t.Run("shouldProcessFile with empty file", func(t *testing.T) {
+		tempDir := t.TempDir()
+		emptyFile := filepath.Join(tempDir, "empty.txt")
+		if err := os.WriteFile(emptyFile, []byte{}, 0o644); err != nil {
+			t.Fatalf("Failed to create empty file: %v", err)
+		}
+
+		mock := &MockLogger{}
+		result := shouldProcessFile(emptyFile, mock)
+
+		if result {
+			t.Error("Expected false for empty file")
+		}
+
+		// Check debug message
+		found := false
+		for _, msg := range mock.DebugMessages {
+			if strings.Contains(msg, "empty") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("Expected 'empty' debug message")
+		}
+	})
 }
 
 func TestRun(t *testing.T) {

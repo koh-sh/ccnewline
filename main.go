@@ -31,6 +31,28 @@ type Config struct {
 	Silent bool
 }
 
+// Logger defines the interface for logging operations
+type Logger interface {
+	// Log outputs a regular message (respects silent mode)
+	Log(format string, args ...any)
+	// Debug outputs debug information (only when debug mode is enabled)
+	Debug(format string, args ...any)
+	// DebugSection starts a new debug section with a title
+	DebugSection(title string)
+	// DebugSeparator closes a debug section
+	DebugSeparator()
+}
+
+// ConsoleLogger implements Logger interface for console output
+type ConsoleLogger struct {
+	config *Config
+}
+
+// NewConsoleLogger creates a new console logger with the given configuration
+func NewConsoleLogger(config *Config) Logger {
+	return &ConsoleLogger{config: config}
+}
+
 // usage prints the program usage information
 func usage() {
 	fmt.Fprintf(os.Stderr, `ccnewline - Automatically adds newline characters to files processed by Claude Code hooks
@@ -79,32 +101,35 @@ func parseFlags() *Config {
 
 // run executes the main processing logic with the given configuration and input
 func run(config *Config, input io.Reader) {
-	filePaths := readFilePathsFromReader(config, input)
+	logger := NewConsoleLogger(config)
+	filePaths := readFilePathsFromReader(logger, input)
 	if len(filePaths) == 0 {
-		config.debugSectionWithInfo("RESULT", "No files to process")
+		logger.DebugSection("RESULT")
+		logger.Debug("No files to process")
+		logger.DebugSeparator()
 		return
 	}
 
-	processFiles(config, filePaths)
+	processFiles(logger, filePaths)
 }
 
 // processFiles handles the processing of multiple files with debug output
-func processFiles(config *Config, filePaths []string) {
-	config.debugSection("PROCESSING")
-	config.debugInfo("Total files to process: %d", len(filePaths))
+func processFiles(logger Logger, filePaths []string) {
+	logger.DebugSection("PROCESSING")
+	logger.Debug("Total files to process: %d", len(filePaths))
 
 	for i, filePath := range filePaths {
-		processSingleFile(config, filePath, i+1, len(filePaths))
+		processSingleFile(logger, filePath, i+1, len(filePaths))
 	}
 
-	config.debugSeparator()
+	logger.DebugSeparator()
 }
 
 // processSingleFile processes a single file and handles any errors
-func processSingleFile(config *Config, filePath string, current, total int) {
-	config.debugInfo("[%d/%d] Processing: %s", current, total, filePath)
-	if err := addNewlineIfNeeded(filePath, config); err != nil {
-		config.debugInfo("Error: %v", err)
+func processSingleFile(logger Logger, filePath string, current, total int) {
+	logger.Debug("[%d/%d] Processing: %s", current, total, filePath)
+	if err := addNewlineIfNeeded(filePath, logger); err != nil {
+		logger.Debug("Error: %v", err)
 		fmt.Fprintf(os.Stderr, "Error processing %s: %v\n", filePath, err)
 	}
 }
@@ -115,42 +140,41 @@ func main() {
 	run(config, os.Stdin)
 }
 
-// debugSection prints a formatted section header for debug output
-func (c *Config) debugSection(title string) {
-	if c.Debug {
-		fmt.Printf("\n┌─ %s ─────────────────────────────────────────────────────────\n", title)
+// Log outputs a regular message (respects silent mode)
+func (l *ConsoleLogger) Log(format string, args ...any) {
+	if !l.config.Silent && !l.config.Debug {
+		fmt.Printf(format, args...)
 	}
 }
 
-// debugInfo prints formatted debug information with a consistent prefix
-func (c *Config) debugInfo(format string, args ...any) {
-	if c.Debug {
+// Debug outputs debug information (only when debug mode is enabled)
+func (l *ConsoleLogger) Debug(format string, args ...any) {
+	if l.config.Debug {
 		fmt.Printf("│ "+format+"\n", args...)
 	}
 }
 
-// debugSeparator prints a closing line for debug sections
-func (c *Config) debugSeparator() {
-	if c.Debug {
-		fmt.Printf("└─────────────────────────────────────────────────────────────\n")
+// DebugSection starts a new debug section with a title
+func (l *ConsoleLogger) DebugSection(title string) {
+	if l.config.Debug {
+		fmt.Printf("\n┌─ %s ─────────────────────────────────────────────────────────\n", title)
 	}
 }
 
-// debugSectionWithInfo is a convenience method that combines section header,
-// info message, and separator in a single call
-func (c *Config) debugSectionWithInfo(title, message string, args ...any) {
-	c.debugSection(title)
-	c.debugInfo(message, args...)
-	c.debugSeparator()
+// DebugSeparator closes a debug section
+func (l *ConsoleLogger) DebugSeparator() {
+	if l.config.Debug {
+		fmt.Printf("└─────────────────────────────────────────────────────────────\n")
+	}
 }
 
 // displayLines prints a limited number of lines with truncation for long inputs.
 // For inputs longer than maxLines, it shows the first few and last few lines
 // with an omission indicator in between.
-func (c *Config) displayLines(lines []string, maxLines int) {
+func displayLines(logger Logger, lines []string, maxLines int) {
 	if len(lines) <= maxLines {
 		for i, line := range lines {
-			c.debugInfo("  Line %d: %s", i+1, line)
+			logger.Debug("  Line %d: %s", i+1, line)
 		}
 		return
 	}
@@ -162,75 +186,121 @@ func (c *Config) displayLines(lines []string, maxLines int) {
 	}
 
 	for i := 0; i < showFirst && i < len(lines); i++ {
-		c.debugInfo("  Line %d: %s", i+1, lines[i])
+		logger.Debug("  Line %d: %s", i+1, lines[i])
 	}
 
 	// Show omission indicator with count of hidden lines
 	omitted := len(lines) - maxLines
-	c.debugInfo("  ... (%d lines omitted) ...", omitted)
+	logger.Debug("  ... (%d lines omitted) ...", omitted)
 
 	// Show the last few lines after omission
 	showLast := maxLines - showFirst
 	start := len(lines) - showLast
 	for i := start; i < len(lines); i++ {
-		c.debugInfo("  Line %d: %s", i+1, lines[i])
+		logger.Debug("  Line %d: %s", i+1, lines[i])
 	}
 }
 
 // debugFileContents reads and displays the contents of a file in debug mode,
 // showing up to 5 lines with truncation for longer files
-func (c *Config) debugFileContents(filePath string) {
-	if !c.Debug {
-		return
-	}
-
+func debugFileContents(logger Logger, filePath string) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		c.debugInfo("Failed to read file contents: %v", err)
+		logger.Debug("Failed to read file contents: %v", err)
 		return
 	}
 
-	c.debugInfo("File contents:")
+	logger.Debug("File contents:")
 	lines := strings.Split(string(content), "\n")
-	c.displayLines(lines, 5)
+	displayLines(logger, lines, 5)
 }
 
 // readFilePaths reads JSON input from stdin and extracts file paths from
 // Claude Code tool outputs. It first attempts JSON parsing to extract paths
 // from tool_input fields, falling back to plain text parsing if JSON fails.
-func readFilePaths(config *Config) []string {
-	return readFilePathsFromReader(config, os.Stdin)
+func readFilePaths(logger Logger) []string {
+	return readFilePathsFromReader(logger, os.Stdin)
+}
+
+// parseFilePathsFromText is a pure function that extracts file paths from input text.
+// It attempts JSON parsing first, then falls back to plain text parsing.
+func parseFilePathsFromText(inputText string) []string {
+	inputText = strings.TrimSpace(inputText)
+	if inputText == "" {
+		return nil
+	}
+
+	lines := strings.Split(inputText, "\n")
+	// Trim empty lines
+	var cleanLines []string
+	for _, line := range lines {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			cleanLines = append(cleanLines, trimmed)
+		}
+	}
+
+	if len(cleanLines) == 0 {
+		return nil
+	}
+
+	// Try JSON parsing first
+	jsonText := strings.Join(cleanLines, "\n")
+	if paths := extractFilePaths(jsonText); len(paths) > 0 {
+		return paths
+	}
+
+	// Fall back to plain text parsing
+	return cleanLines
 }
 
 // readFilePathsFromReader reads JSON input from the given reader and extracts file paths from
 // Claude Code tool outputs. It first attempts JSON parsing to extract paths
 // from tool_input fields, falling back to plain text parsing if JSON fails.
-func readFilePathsFromReader(config *Config, input io.Reader) []string {
-	if !hasInputAvailable(config, input) {
+func readFilePathsFromReader(logger Logger, input io.Reader) []string {
+	if !hasInputAvailable(logger, input) {
 		return nil
 	}
 
-	config.debugSection("INPUT PARSING")
+	logger.DebugSection("INPUT PARSING")
 	lines := readInputLines(input)
 
 	if len(lines) == 0 {
-		config.debugInfo("Empty input")
-		config.debugSeparator()
+		logger.Debug("Empty input")
+		logger.DebugSeparator()
 		return nil
 	}
 
-	config.debugInfo("Input received (%d lines):", len(lines))
-	config.displayLines(lines, 3)
+	logger.Debug("Input received (%d lines):", len(lines))
+	displayLines(logger, lines, 3)
 
-	return parseInputLines(config, lines)
+	inputText := strings.Join(lines, "\n")
+	paths := parseFilePathsFromText(inputText)
+
+	if len(paths) > 0 {
+		// Check if we used JSON parsing or plain text
+		if extractFilePaths(inputText) != nil {
+			logger.Debug("JSON parsing successful")
+		} else {
+			logger.Debug("JSON parsing failed, treating as plain text")
+		}
+		logger.Debug("Extracted file paths:")
+		for i, path := range paths {
+			logger.Debug("  [%d] %s", i+1, path)
+		}
+	}
+
+	logger.DebugSeparator()
+	return paths
 }
 
 // hasInputAvailable checks if input is available from the reader
-func hasInputAvailable(config *Config, input io.Reader) bool {
+func hasInputAvailable(logger Logger, input io.Reader) bool {
 	if input == os.Stdin {
 		stat, err := os.Stdin.Stat()
 		if err != nil || (stat.Mode()&os.ModeCharDevice) != 0 {
-			config.debugSectionWithInfo("INPUT PARSING", "No stdin input available")
+			logger.DebugSection("INPUT PARSING")
+			logger.Debug("No stdin input available")
+			logger.DebugSeparator()
 			return false
 		}
 	}
@@ -254,35 +324,6 @@ func readInputLines(input io.Reader) []string {
 	}
 
 	return lines
-}
-
-// parseInputLines attempts JSON parsing first, then falls back to plain text
-func parseInputLines(config *Config, lines []string) []string {
-	inputText := strings.Join(lines, "\n")
-	if paths := extractFilePaths(inputText); len(paths) > 0 {
-		config.debugInfo("JSON parsing successful")
-		config.debugInfo("Extracted file paths:")
-		for i, path := range paths {
-			config.debugInfo("  [%d] %s", i+1, path)
-		}
-		config.debugSeparator()
-		return paths
-	}
-
-	return parseAsPlainText(config, lines)
-}
-
-// parseAsPlainText treats input as plain text with one file path per line
-func parseAsPlainText(config *Config, lines []string) []string {
-	config.debugInfo("JSON parsing failed, treating as plain text")
-	var filePaths []string
-	for _, line := range lines {
-		if line = strings.TrimSpace(line); line != "" {
-			filePaths = append(filePaths, line)
-		}
-	}
-	config.debugSeparator()
-	return filePaths
 }
 
 // extractFilePaths parses JSON input and extracts file paths from Claude Code
@@ -344,8 +385,8 @@ func extractPathsFromToolInput(toolInput map[string]any) []string {
 // addNewlineIfNeeded checks if a file ends with a newline character and adds
 // one if missing. It skips non-existent or empty files and only modifies files
 // that don't end with a newline (0x0a byte).
-func addNewlineIfNeeded(filePath string, config *Config) error {
-	if !shouldProcessFile(filePath, config) {
+func addNewlineIfNeeded(filePath string, logger Logger) error {
+	if !shouldProcessFile(filePath, logger) {
 		return nil
 	}
 
@@ -361,23 +402,23 @@ func addNewlineIfNeeded(filePath string, config *Config) error {
 	}
 
 	if needsNewline {
-		return addNewlineToFile(file, filePath, config)
+		return addNewlineToFile(file, filePath, logger)
 	}
 
-	config.debugInfo("Already ends with newline")
-	config.debugFileContents(filePath)
+	logger.Debug("Already ends with newline")
+	debugFileContents(logger, filePath)
 	return nil
 }
 
 // shouldProcessFile checks if the file exists and is not empty
-func shouldProcessFile(filePath string, config *Config) bool {
+func shouldProcessFile(filePath string, logger Logger) bool {
 	info, err := os.Stat(filePath)
 	if err != nil {
-		config.debugInfo("File does not exist, skipping")
+		logger.Debug("File does not exist, skipping")
 		return false
 	}
 	if info.Size() == 0 {
-		config.debugInfo("File is empty, skipping")
+		logger.Debug("File is empty, skipping")
 		return false
 	}
 	return true
@@ -400,16 +441,14 @@ func checkLastByte(file *os.File) (bool, error) {
 }
 
 // addNewlineToFile appends a newline to the file and handles output
-func addNewlineToFile(file *os.File, filePath string, config *Config) error {
-	config.debugInfo("Adding newline (missing)")
-	config.debugFileContents(filePath)
+func addNewlineToFile(file *os.File, filePath string, logger Logger) error {
+	logger.Debug("Adding newline (missing)")
+	debugFileContents(logger, filePath)
 
 	_, err := file.Write([]byte{newlineByte})
 	if err == nil {
-		config.debugInfo("Newline added successfully")
-		if !config.Debug && !config.Silent {
-			fmt.Printf("Added newline to %s\n", filePath)
-		}
+		logger.Debug("Newline added successfully")
+		logger.Log("Added newline to %s\n", filePath)
 	}
 	return err
 }
