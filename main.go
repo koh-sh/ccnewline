@@ -100,7 +100,7 @@ type flagParser struct {
 	argValidator   *argumentValidator
 }
 
-// NewflagParser creates a new flag parser
+// newFlagParser creates a new flag parser
 func newFlagParser() *flagParser {
 	return &flagParser{
 		versionHandler: &versionHandler{},
@@ -169,7 +169,7 @@ type errorHandler struct {
 	ErrorWriter io.Writer
 }
 
-// NewerrorHandler creates a new error handler with stderr as default writer
+// newErrorHandler creates a new error handler with stderr as default writer
 func newErrorHandler() *errorHandler {
 	return &errorHandler{
 		ErrorWriter: os.Stderr,
@@ -196,7 +196,7 @@ type singleFileProcessor struct {
 	errorHandler   *errorHandler
 }
 
-// NewsingleFileProcessor creates a new single file processor
+// newSingleFileProcessor creates a new single file processor
 func newSingleFileProcessor() *singleFileProcessor {
 	return &singleFileProcessor{
 		progressLogger: &progressLogger{},
@@ -302,7 +302,7 @@ type lineDisplayer struct {
 	strategy displayStrategy
 }
 
-// NewlineDisplayer creates a new line displayer with truncated strategy
+// newLineDisplayer creates a new line displayer with truncated strategy
 func newLineDisplayer() *lineDisplayer {
 	return &lineDisplayer{
 		strategy: &truncatedDisplayStrategy{},
@@ -444,7 +444,7 @@ type inputReader struct {
 	pathParser   *pathParser
 }
 
-// NewinputReader creates a new input reader
+// newInputReader creates a new input reader
 func newInputReader() *inputReader {
 	return &inputReader{
 		inputChecker: &inputChecker{},
@@ -637,7 +637,7 @@ type fileProcessor struct {
 	modifier  *fileModifier
 }
 
-// NewfileProcessor creates a new file processor
+// newFileProcessor creates a new file processor
 func newFileProcessor() *fileProcessor {
 	return &fileProcessor{
 		validator: &fileValidator{},
