@@ -20,10 +20,12 @@ tidy:
 lint:
 	go tool golangci-lint run -v
 
-ci: fmt modernize-fix lint test
+ci: fmt modernize-fix lint cov blackboxtest
 
 blackboxtest:
+	go build
 	./_testscripts/test_functionality.sh
+
 # Go Modernize
 modernize:
 	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...
