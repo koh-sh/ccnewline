@@ -39,8 +39,17 @@ Designed as a PostToolUse hook for Edit, MultiEdit, and Write tools.
 Usage: %s [options] < input.json
 
 Options:
+  -d, --debug      Enable debug output
+  -s, --silent     Silent mode - no output
+  -v, --version    Show version information
+  -h, --help       Show this help message
 `, os.Args[0])
-	flag.PrintDefaults()
+}
+
+// defineBoolFlag defines both short and long form of a boolean flag
+func defineBoolFlag(p *bool, short, long string, usage string) {
+	flag.BoolVar(p, short, false, usage)
+	flag.BoolVar(p, long, false, usage)
 }
 
 // parseFlags parses command line flags and returns configuration or exits on error
@@ -48,12 +57,9 @@ func parseFlags() *Config {
 	flag.Usage = usage
 
 	var debug, silent, showVersion bool
-	flag.BoolVar(&debug, "d", false, "Enable debug output")
-	flag.BoolVar(&debug, "debug", false, "Enable debug output")
-	flag.BoolVar(&silent, "s", false, "Silent mode - no output")
-	flag.BoolVar(&silent, "silent", false, "Silent mode - no output")
-	flag.BoolVar(&showVersion, "v", false, "Show version information")
-	flag.BoolVar(&showVersion, "version", false, "Show version information")
+	defineBoolFlag(&debug, "d", "debug", "Enable debug output")
+	defineBoolFlag(&silent, "s", "silent", "Silent mode - no output")
+	defineBoolFlag(&showVersion, "v", "version", "Show version information")
 	flag.Parse()
 
 	// Handle version flag
