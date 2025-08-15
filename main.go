@@ -215,13 +215,6 @@ func debugFileContents(logger Logger, filePath string) {
 	displayLines(logger, lines, 5)
 }
 
-// readFilePaths reads JSON input from stdin and extracts file paths from
-// Claude Code tool outputs. It first attempts JSON parsing to extract paths
-// from tool_input fields, falling back to plain text parsing if JSON fails.
-func readFilePaths(logger Logger) []string {
-	return readFilePathsFromReader(logger, os.Stdin)
-}
-
 // parseFilePathsFromText is a pure function that extracts file paths from input text.
 // It attempts JSON parsing first, then falls back to plain text parsing.
 func parseFilePathsFromText(inputText string) []string {
@@ -380,6 +373,29 @@ func extractPathsFromToolInput(toolInput map[string]any) []string {
 	}
 
 	return paths
+}
+
+// needsNewlineFromContent is a pure function that checks if content needs a trailing newline
+func needsNewlineFromContent(content []byte) bool {
+	if len(content) == 0 {
+		return false // Empty files don't need newlines
+	}
+	return content[len(content)-1] != newlineByte
+}
+
+// fileExists is a pure function that checks if a file exists
+func fileExists(filePath string) bool {
+	_, err := os.Stat(filePath)
+	return err == nil
+}
+
+// isFileEmpty is a pure function that checks if a file is empty
+func isFileEmpty(filePath string) bool {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return false // Non-existent files are not considered empty
+	}
+	return info.Size() == 0
 }
 
 // addNewlineIfNeeded checks if a file ends with a newline character and adds
