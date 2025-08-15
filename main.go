@@ -31,31 +31,18 @@ type Config struct {
 	Silent bool
 }
 
-// BasicLogger defines basic logging operations
-type BasicLogger interface {
-	// Log outputs a regular message (respects silent mode)
-	Log(format string, args ...any)
-}
-
-// DebugLogger defines debug logging operations
-type DebugLogger interface {
+// Logger defines the unified logging interface
+type Logger interface {
+	// Print outputs a regular message (respects silent mode)
+	Print(format string, args ...any)
 	// Debug outputs debug information (only when debug mode is enabled)
 	Debug(format string, args ...any)
-}
-
-// StructuredDebugLogger defines structured debug operations
-type StructuredDebugLogger interface {
 	// DebugSection starts a new debug section with a title
 	DebugSection(title string)
-	// DebugSeparator closes a debug section
-	DebugSeparator()
-}
-
-// Logger combines all logging interfaces for backward compatibility
-type Logger interface {
-	BasicLogger
-	DebugLogger
-	StructuredDebugLogger
+	// DebugEnd closes a debug section
+	DebugEnd()
+	// IsDebugEnabled returns whether debug mode is enabled
+	IsDebugEnabled() bool
 }
 
 // ConsoleLogger implements Logger interface for console output
@@ -160,7 +147,7 @@ func run(config *Config, input io.Reader) {
 	if len(filePaths) == 0 {
 		logger.DebugSection("RESULT")
 		logger.Debug("No files to process")
-		logger.DebugSeparator()
+		logger.DebugEnd()
 		return
 	}
 
@@ -176,7 +163,7 @@ func processFiles(logger Logger, filePaths []string) {
 		processSingleFile(logger, filePath, i+1, len(filePaths))
 	}
 
-	logger.DebugSeparator()
+	logger.DebugEnd()
 }
 
 // ErrorHandler handles error processing and reporting
@@ -239,8 +226,8 @@ func main() {
 	run(config, os.Stdin)
 }
 
-// Log outputs a regular message (respects silent mode)
-func (l *ConsoleLogger) Log(format string, args ...any) {
+// Print outputs a regular message (respects silent mode)
+func (l *ConsoleLogger) Print(format string, args ...any) {
 	if !l.config.Silent && !l.config.Debug {
 		fmt.Printf(format, args...)
 	}
@@ -260,11 +247,16 @@ func (l *ConsoleLogger) DebugSection(title string) {
 	}
 }
 
-// DebugSeparator closes a debug section
-func (l *ConsoleLogger) DebugSeparator() {
+// DebugEnd closes a debug section
+func (l *ConsoleLogger) DebugEnd() {
 	if l.config.Debug {
 		fmt.Printf("└─────────────────────────────────────────────────────────────\n")
 	}
+}
+
+// IsDebugEnabled returns whether debug mode is enabled
+func (l *ConsoleLogger) IsDebugEnabled() bool {
+	return l.config.Debug
 }
 
 // DisplayStrategy defines how lines should be displayed
@@ -499,7 +491,7 @@ func (ir *InputReader) ReadPaths(logger Logger, input io.Reader) []string {
 
 	if len(lines) == 0 {
 		logger.Debug("Empty input")
-		logger.DebugSeparator()
+		logger.DebugEnd()
 		return nil
 	}
 
@@ -521,7 +513,7 @@ func (ir *InputReader) ReadPaths(logger Logger, input io.Reader) []string {
 		}
 	}
 
-	logger.DebugSeparator()
+	logger.DebugEnd()
 	return paths
 }
 
@@ -540,7 +532,7 @@ func hasInputAvailable(logger Logger, input io.Reader) bool {
 		if err != nil || (stat.Mode()&os.ModeCharDevice) != 0 {
 			logger.DebugSection("INPUT PARSING")
 			logger.Debug("No stdin input available")
-			logger.DebugSeparator()
+			logger.DebugEnd()
 			return false
 		}
 	}
@@ -757,7 +749,7 @@ func addNewlineToFile(file *os.File, filePath string, logger Logger) error {
 	_, err := file.Write([]byte{newlineByte})
 	if err == nil {
 		logger.Debug("Newline added successfully")
-		logger.Log("Added newline to %s\n", filePath)
+		logger.Print("Added newline to %s\n", filePath)
 	}
 	return err
 }

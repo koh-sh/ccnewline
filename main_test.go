@@ -17,11 +17,12 @@ type MockLogger struct {
 	Messages      []string
 	DebugMessages []string
 	Sections      []string
-	Separators    int
+	SectionEnds   int
+	debugEnabled  bool
 }
 
-// Log records regular messages
-func (m *MockLogger) Log(format string, args ...any) {
+// Print records regular messages
+func (m *MockLogger) Print(format string, args ...any) {
 	m.Messages = append(m.Messages, fmt.Sprintf(format, args...))
 }
 
@@ -35,9 +36,14 @@ func (m *MockLogger) DebugSection(title string) {
 	m.Sections = append(m.Sections, title)
 }
 
-// DebugSeparator counts separators
-func (m *MockLogger) DebugSeparator() {
-	m.Separators++
+// DebugEnd counts section ends
+func (m *MockLogger) DebugEnd() {
+	m.SectionEnds++
+}
+
+// IsDebugEnabled returns debug enabled status
+func (m *MockLogger) IsDebugEnabled() bool {
+	return m.debugEnabled
 }
 
 // captureOutput captures stdout during function execution
@@ -394,7 +400,7 @@ func TestConsoleLoggerOutputModes(t *testing.T) {
 			output := captureOutput(func() {
 				switch tt.methodType {
 				case "Log":
-					logger.Log(tt.message)
+					logger.Print(tt.message)
 				case "Debug":
 					logger.Debug(tt.message)
 				}
@@ -635,13 +641,13 @@ func TestConsoleLogger(t *testing.T) {
 			output := captureOutput(func() {
 				switch tt.methodType {
 				case "Log":
-					logger.Log(tt.message)
+					logger.Print(tt.message)
 				case "Debug":
 					logger.Debug(tt.message)
 				case "DebugSection":
 					logger.DebugSection(tt.message)
 				case "DebugSeparator":
-					logger.DebugSeparator()
+					logger.DebugEnd()
 				}
 			})
 
@@ -661,36 +667,6 @@ func TestConsoleLogger(t *testing.T) {
 			}
 		})
 	}
-}
-
-// Additional Mock implementations for testing new interfaces
-type MockBasicLogger struct {
-	Messages []string
-}
-
-func (m *MockBasicLogger) Log(format string, args ...any) {
-	m.Messages = append(m.Messages, fmt.Sprintf(format, args...))
-}
-
-type MockDebugLogger struct {
-	DebugMessages []string
-}
-
-func (m *MockDebugLogger) Debug(format string, args ...any) {
-	m.DebugMessages = append(m.DebugMessages, fmt.Sprintf(format, args...))
-}
-
-type MockStructuredDebugLogger struct {
-	Sections   []string
-	Separators int
-}
-
-func (m *MockStructuredDebugLogger) DebugSection(title string) {
-	m.Sections = append(m.Sections, title)
-}
-
-func (m *MockStructuredDebugLogger) DebugSeparator() {
-	m.Separators++
 }
 
 // TestVersionHandler tests version handling functionality
@@ -1619,157 +1595,5 @@ func TestCompositeTextParser(t *testing.T) {
 	expected := []string{"/test.txt"}
 	if !reflect.DeepEqual(result, expected) {
 		t.Errorf("CompositeTextParser.Parse() after AddParser = %v, want %v", result, expected)
-	}
-}
-
-// TestBasicLogger tests BasicLogger interface
-func TestBasicLogger(t *testing.T) {
-	tests := []struct {
-		name            string
-		message         string
-		expectedMessage string
-	}{
-		{
-			name:            "log simple message",
-			message:         "test message",
-			expectedMessage: "test message",
-		},
-		{
-			name:            "log formatted message",
-			message:         "hello world",
-			expectedMessage: "hello world",
-		},
-		{
-			name:            "log empty message",
-			message:         "",
-			expectedMessage: "",
-		},
-		{
-			name:            "log multiline message",
-			message:         "line1\nline2",
-			expectedMessage: "line1\nline2",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockLogger := &MockBasicLogger{}
-			var logger BasicLogger = mockLogger
-			logger.Log(tt.message)
-
-			if len(mockLogger.Messages) != 1 {
-				t.Errorf("Expected 1 message, got %d", len(mockLogger.Messages))
-			}
-			if len(mockLogger.Messages) > 0 && mockLogger.Messages[0] != tt.expectedMessage {
-				t.Errorf("Expected message '%s', got '%s'", tt.expectedMessage, mockLogger.Messages[0])
-			}
-		})
-	}
-}
-
-// TestDebugLogger tests DebugLogger interface
-func TestDebugLogger(t *testing.T) {
-	tests := []struct {
-		name            string
-		message         string
-		expectedMessage string
-	}{
-		{
-			name:            "debug simple message",
-			message:         "debug message",
-			expectedMessage: "debug message",
-		},
-		{
-			name:            "debug detailed info",
-			message:         "detailed debug info",
-			expectedMessage: "detailed debug info",
-		},
-		{
-			name:            "debug error info",
-			message:         "error occurred: file not found",
-			expectedMessage: "error occurred: file not found",
-		},
-		{
-			name:            "debug processing info",
-			message:         "Processing file: /path/to/file.txt",
-			expectedMessage: "Processing file: /path/to/file.txt",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockLogger := &MockDebugLogger{}
-			var logger DebugLogger = mockLogger
-			logger.Debug(tt.message)
-
-			if len(mockLogger.DebugMessages) != 1 {
-				t.Errorf("Expected 1 debug message, got %d", len(mockLogger.DebugMessages))
-			}
-			if len(mockLogger.DebugMessages) > 0 && mockLogger.DebugMessages[0] != tt.expectedMessage {
-				t.Errorf("Expected debug message '%s', got '%s'", tt.expectedMessage, mockLogger.DebugMessages[0])
-			}
-		})
-	}
-}
-
-// TestStructuredDebugLogger tests StructuredDebugLogger interface
-func TestStructuredDebugLogger(t *testing.T) {
-	tests := []struct {
-		name            string
-		operationType   string
-		sectionTitle    string
-		expectedSection string
-		expectedSeps    int
-	}{
-		{
-			name:            "debug section INPUT",
-			operationType:   "section",
-			sectionTitle:    "INPUT PARSING",
-			expectedSection: "INPUT PARSING",
-			expectedSeps:    0,
-		},
-		{
-			name:            "debug section PROCESSING",
-			operationType:   "section",
-			sectionTitle:    "PROCESSING",
-			expectedSection: "PROCESSING",
-			expectedSeps:    0,
-		},
-		{
-			name:            "debug section RESULT",
-			operationType:   "section",
-			sectionTitle:    "RESULT",
-			expectedSection: "RESULT",
-			expectedSeps:    0,
-		},
-		{
-			name:            "debug separator",
-			operationType:   "separator",
-			sectionTitle:    "",
-			expectedSection: "",
-			expectedSeps:    1,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockLogger := &MockStructuredDebugLogger{}
-			var logger StructuredDebugLogger = mockLogger
-
-			if tt.operationType == "section" {
-				logger.DebugSection(tt.sectionTitle)
-				if len(mockLogger.Sections) != 1 {
-					t.Errorf("Expected 1 section, got %d", len(mockLogger.Sections))
-				}
-				if len(mockLogger.Sections) > 0 && mockLogger.Sections[0] != tt.expectedSection {
-					t.Errorf("Expected section '%s', got '%s'", tt.expectedSection, mockLogger.Sections[0])
-				}
-			} else {
-				logger.DebugSeparator()
-				if mockLogger.Separators != tt.expectedSeps {
-					t.Errorf("Expected %d separators, got %d", tt.expectedSeps, mockLogger.Separators)
-				}
-			}
-		})
 	}
 }
