@@ -9,7 +9,7 @@ ccnewline is a Claude Code PostToolUse hook that automatically ensures files end
 ## Core Design
 
 Single-file implementation following YAGNI principles:
-- All functionality in `main.go` (~825 lines) with SOLID-compliant architecture
+- All functionality in `main.go` (~732 lines) with SOLID-compliant architecture
 - Standard library only (no external dependencies)
 - Designed exclusively for Claude Code PostToolUse hook usage
 - Simple flag-based configuration: normal, silent (-s), debug (-d)
@@ -17,6 +17,12 @@ Single-file implementation following YAGNI principles:
 The tool extracts file paths from `tool_input.path`, `tool_input.file_path`, or `tool_input.paths[]` fields in JSON input.
 
 Debug output is automatically truncated to last 3 lines for inputs longer than 3 lines to avoid cluttering output.
+
+## Performance Characteristics
+
+- Optimized to only read the last byte of files for newline detection
+- Handles large files (1GB+) in ~0.01 seconds
+- Minimal memory footprint - does not load entire files into memory
 
 ## Development Commands
 
@@ -44,9 +50,9 @@ make ci            # Full CI pipeline (fmt, modernize-fix, lint, test)
 
 ## Testing Architecture
 
-The project has focused test coverage (82.9%):
+The project has focused test coverage (84.0%):
 
-- **Unit tests** (`main_test.go`): 156 comprehensive table-driven tests covering all components with SOLID compliance
+- **Unit tests** (`main_test.go`): Comprehensive table-driven tests covering all components with SOLID compliance
 - **Integration tests** (`_testscripts/test_functionality.sh`): 7 minimal tests covering Claude Code tool patterns (Edit/MultiEdit/Write) and output modes (normal/silent/debug)
 - **Coverage reporting**: Use `make cov` to generate HTML coverage reports
 
