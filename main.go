@@ -41,8 +41,6 @@ type Logger interface {
 	DebugSection(title string)
 	// DebugEnd closes a debug section
 	DebugEnd()
-	// IsDebugEnabled returns whether debug mode is enabled
-	IsDebugEnabled() bool
 }
 
 // ConsoleLogger implements Logger interface for console output
@@ -252,11 +250,6 @@ func (l *ConsoleLogger) DebugEnd() {
 	if l.config.Debug {
 		fmt.Printf("└─────────────────────────────────────────────────────────────\n")
 	}
-}
-
-// IsDebugEnabled returns whether debug mode is enabled
-func (l *ConsoleLogger) IsDebugEnabled() bool {
-	return l.config.Debug
 }
 
 // DisplayStrategy defines how lines should be displayed

@@ -18,7 +18,6 @@ type MockLogger struct {
 	DebugMessages []string
 	Sections      []string
 	SectionEnds   int
-	debugEnabled  bool
 }
 
 // Print records regular messages
@@ -39,11 +38,6 @@ func (m *MockLogger) DebugSection(title string) {
 // DebugEnd counts section ends
 func (m *MockLogger) DebugEnd() {
 	m.SectionEnds++
-}
-
-// IsDebugEnabled returns debug enabled status
-func (m *MockLogger) IsDebugEnabled() bool {
-	return m.debugEnabled
 }
 
 // captureOutput captures stdout during function execution
@@ -1595,5 +1589,143 @@ func TestCompositeTextParser(t *testing.T) {
 	expected := []string{"/test.txt"}
 	if !reflect.DeepEqual(result, expected) {
 		t.Errorf("CompositeTextParser.Parse() after AddParser = %v, want %v", result, expected)
+	}
+}
+
+// TestDebugFileContentsErrorHandling tests debugFileContents with file read errors
+func TestDebugFileContentsErrorHandling(t *testing.T) {
+	tempDir := t.TempDir()
+
+	tests := []struct {
+		name             string
+		filePath         string
+		expectedErrorMsg string
+	}{
+		{
+			name:             "non-existent file",
+			filePath:         "/nonexistent/file.txt",
+			expectedErrorMsg: "Failed to read file contents",
+		},
+		{
+			name:             "directory instead of file",
+			filePath:         tempDir,
+			expectedErrorMsg: "Failed to read file contents",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLogger := &MockLogger{}
+
+			debugFileContents(mockLogger, tt.filePath)
+
+			// Verify that debug message was logged about the failure
+			found := false
+			for _, msg := range mockLogger.DebugMessages {
+				if strings.Contains(msg, tt.expectedErrorMsg) {
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				t.Errorf("Expected debug message containing %q", tt.expectedErrorMsg)
+			}
+		})
+	}
+}
+
+// TestReadInputLinesTrailingEmptyLines tests readInputLines with trailing empty lines
+func TestReadInputLinesTrailingEmptyLines(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "input with trailing empty lines",
+			input:    "line1\nline2\n\n\n",
+			expected: []string{"line1", "line2"},
+		},
+		{
+			name:     "input with single trailing empty line",
+			input:    "line1\nline2\n",
+			expected: []string{"line1", "line2"},
+		},
+		{
+			name:     "input with only empty lines",
+			input:    "\n\n\n",
+			expected: nil,
+		},
+		{
+			name:     "input with mixed empty lines",
+			input:    "line1\n\nline2\n\n\n",
+			expected: []string{"line1", "", "line2"},
+		},
+		{
+			name:     "input without trailing newline",
+			input:    "line1\nline2",
+			expected: []string{"line1", "line2"},
+		},
+		{
+			name:     "single line with trailing empty lines",
+			input:    "single\n\n\n",
+			expected: []string{"single"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := strings.NewReader(tt.input)
+			result := readInputLines(reader)
+
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("readInputLines() = %#v, want %#v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestCheckLastByteIOError tests checkLastByte with I/O errors
+func TestCheckLastByteIOError(t *testing.T) {
+	tempDir := t.TempDir()
+
+	tests := []struct {
+		name                 string
+		fileContent          []byte
+		expectedError        bool
+		expectedNeedsNewline bool
+	}{
+		{
+			name:                 "empty file should error on seek",
+			fileContent:          []byte{},
+			expectedError:        true,
+			expectedNeedsNewline: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testFile := filepath.Join(tempDir, "test.txt")
+			_ = os.WriteFile(testFile, tt.fileContent, 0o644)
+
+			file, err := os.OpenFile(testFile, os.O_RDWR, 0o644)
+			if err != nil {
+				t.Fatalf("Failed to open test file: %v", err)
+			}
+			defer file.Close()
+
+			needsNewline, err := checkLastByte(file)
+
+			if tt.expectedError && err == nil {
+				t.Error("Expected error but got nil")
+			}
+			if !tt.expectedError && err != nil {
+				t.Errorf("Expected no error but got: %v", err)
+			}
+			if needsNewline != tt.expectedNeedsNewline {
+				t.Errorf("Expected needsNewline %v, got %v", tt.expectedNeedsNewline, needsNewline)
+			}
+		})
 	}
 }
