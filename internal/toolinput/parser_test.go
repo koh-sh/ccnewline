@@ -215,3 +215,317 @@ func TestReadInputLines(t *testing.T) {
 		})
 	}
 }
+
+// Mock logger for testing
+type mockLogger struct {
+	debugMessages []string
+	infoMessages  []string
+	errorMessages []string
+}
+
+func (m *mockLogger) Debug(message string) {
+	m.debugMessages = append(m.debugMessages, message)
+}
+
+func (m *mockLogger) Info(message string) {
+	m.infoMessages = append(m.infoMessages, message)
+}
+
+func (m *mockLogger) Error(message string) {
+	m.errorMessages = append(m.errorMessages, message)
+}
+
+func (m *mockLogger) LogFileProcessing(file, result string) {
+	m.infoMessages = append(m.infoMessages, file+": "+result)
+}
+
+func (m *mockLogger) ShowProcessingStart(files []string) {
+	m.debugMessages = append(m.debugMessages, "Processing start")
+}
+
+func (m *mockLogger) ShowProcessingEnd(totalFiles, processedFiles int) {
+	m.debugMessages = append(m.debugMessages, "Processing end")
+}
+
+func TestReadToolInput(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "JSON input with Edit tool",
+			input:    `{"tool_input": {"file_path": "/test/file.txt"}}`,
+			expected: []string{"/test/file.txt"},
+		},
+		{
+			name:     "JSON input with MultiEdit tool",
+			input:    `{"tool_input": {"paths": ["/test/file1.txt", "/test/file2.go"]}}`,
+			expected: []string{"/test/file1.txt", "/test/file2.go"},
+		},
+		{
+			name:     "Plain text input",
+			input:    "/test/file1.txt\n/test/file2.go",
+			expected: []string{"/test/file1.txt", "/test/file2.go"},
+		},
+		{
+			name:     "Empty input",
+			input:    "",
+			expected: []string{},
+		},
+		{
+			name:     "Invalid JSON",
+			input:    "not valid json",
+			expected: []string{"not valid json"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := &mockLogger{}
+			reader := strings.NewReader(tt.input)
+
+			result := ReadToolInput(logger, reader)
+
+			if len(result) != len(tt.expected) {
+				t.Errorf("ReadToolInput() length = %v, want %v", len(result), len(tt.expected))
+				return
+			}
+			for i, path := range result {
+				if path != tt.expected[i] {
+					t.Errorf("ReadToolInput()[%d] = %v, want %v", i, path, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestPathExtractorIsJSON(t *testing.T) {
+	extractor := newPathExtractor()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{
+			name:     "valid JSON object",
+			input:    `{"tool_input": {"path": "/test/file.txt"}}`,
+			expected: true,
+		},
+		{
+			name:     "valid JSON array",
+			input:    `[1, 2, 3]`,
+			expected: false, // isJSON only checks for objects, not arrays
+		},
+		{
+			name:     "invalid JSON",
+			input:    "not json",
+			expected: false,
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: false,
+		},
+		{
+			name:     "malformed JSON",
+			input:    `{"tool_input": {"path": "/test/file.txt"}`,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractor.isJSON(tt.input)
+			if result != tt.expected {
+				t.Errorf("isJSON() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestPathExtractorExtractPathsFromToolInput(t *testing.T) {
+	extractor := newPathExtractor()
+
+	tests := []struct {
+		name     string
+		toolData map[string]any
+		expected []string
+	}{
+		{
+			name: "path field only",
+			toolData: map[string]any{
+				"path": "/test/file.txt",
+			},
+			expected: []string{"/test/file.txt"},
+		},
+		{
+			name: "file_path field only",
+			toolData: map[string]any{
+				"file_path": "/test/file.go",
+			},
+			expected: []string{"/test/file.go"},
+		},
+		{
+			name: "paths array",
+			toolData: map[string]any{
+				"paths": []any{"/test/file1.txt", "/test/file2.go"},
+			},
+			expected: []string{"/test/file1.txt", "/test/file2.go"},
+		},
+		{
+			name: "multiple fields",
+			toolData: map[string]any{
+				"path":      "/test/file1.txt",
+				"file_path": "/test/file2.go",
+				"paths":     []any{"/test/file3.md"},
+			},
+			expected: []string{"/test/file1.txt", "/test/file2.go", "/test/file3.md"},
+		},
+		{
+			name: "no relevant fields",
+			toolData: map[string]any{
+				"other": "data",
+			},
+			expected: []string{},
+		},
+		{
+			name: "invalid paths array",
+			toolData: map[string]any{
+				"paths": "not an array",
+			},
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractor.extractPathsFromToolInput(tt.toolData)
+			if len(result) != len(tt.expected) {
+				t.Errorf("extractPathsFromToolInput() length = %v, want %v", len(result), len(tt.expected))
+				return
+			}
+			for i, path := range result {
+				if path != tt.expected[i] {
+					t.Errorf("extractPathsFromToolInput()[%d] = %v, want %v", i, path, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestInputCheckerCheckAvailability(t *testing.T) {
+	// This function primarily checks stdin availability
+	// For non-stdin readers, it always returns true
+	checker := newInputChecker()
+	logger := &mockLogger{}
+	reader := strings.NewReader("some content")
+
+	result := checker.checkAvailability(logger, reader)
+	if !result {
+		t.Error("checkAvailability() should return true for non-stdin readers")
+	}
+}
+
+func TestInputReaderReadPaths(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "JSON input",
+			input:    `{"tool_input": {"file_path": "/test/file.txt"}}`,
+			expected: []string{"/test/file.txt"},
+		},
+		{
+			name:     "plain text input",
+			input:    "/test/file1.txt\n/test/file2.go",
+			expected: []string{"/test/file1.txt", "/test/file2.go"},
+		},
+		{
+			name:     "empty input",
+			input:    "",
+			expected: []string{},
+		},
+		{
+			name:     "whitespace only input",
+			input:    "   \n\t  ",
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := &mockLogger{}
+			reader := newInputReader()
+			inputReader := strings.NewReader(tt.input)
+
+			result := reader.readPaths(logger, inputReader)
+
+			if len(result) != len(tt.expected) {
+				t.Errorf("readPaths() length = %v, want %v", len(result), len(tt.expected))
+				return
+			}
+			for i, path := range result {
+				if path != tt.expected[i] {
+					t.Errorf("readPaths()[%d] = %v, want %v", i, path, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestParseToolInputEdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+		hasError bool
+	}{
+		{
+			name:     "nested tool_input",
+			input:    `{"nested": {"tool_input": {"path": "/test/file.txt"}}}`,
+			expected: []string{},
+			hasError: false,
+		},
+		{
+			name:     "tool_input as array",
+			input:    `{"tool_input": ["/test/file.txt"]}`,
+			expected: []string{},
+			hasError: false,
+		},
+		{
+			name:     "tool_input as string",
+			input:    `{"tool_input": "/test/file.txt"}`,
+			expected: []string{},
+			hasError: false,
+		},
+		{
+			name:     "mixed types in paths array",
+			input:    `{"tool_input": {"paths": ["/test/file.txt", 123, true]}}`,
+			expected: []string{"/test/file.txt"},
+			hasError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ParseToolInput(tt.input)
+			if (err != nil) != tt.hasError {
+				t.Errorf("ParseToolInput() error = %v, hasError %v", err, tt.hasError)
+				return
+			}
+			if len(result) != len(tt.expected) {
+				t.Errorf("ParseToolInput() length = %v, want %v", len(result), len(tt.expected))
+				return
+			}
+			for i, path := range result {
+				if path != tt.expected[i] {
+					t.Errorf("ParseToolInput()[%d] = %v, want %v", i, path, tt.expected[i])
+				}
+			}
+		})
+	}
+}
