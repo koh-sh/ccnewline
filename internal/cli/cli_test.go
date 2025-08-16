@@ -401,7 +401,7 @@ func TestParseFlagsFunction(t *testing.T) {
 	// Set test args for normal operation
 	os.Args = []string{"test", "-d"}
 
-	config := ParseFlags()
+	config := ParseFlags("dev", "none", "unknown")
 
 	if !config.Debug {
 		t.Error("Debug flag should be set")

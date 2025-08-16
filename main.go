@@ -11,9 +11,16 @@ import (
 	"github.com/koh-sh/ccnewline/internal/processing"
 )
 
+// Version information, set by goreleaser during build
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 // main is the entry point of the ccnewline tool
 func main() {
-	config := cli.ParseFlags()
+	config := cli.ParseFlags(version, commit, date)
 	logger := logging.NewConsoleLogger(config)
 	processing.Run(config, logger, os.Stdin)
 }

@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// Version information, set by goreleaser during build
+// Version information, passed from main package
 var (
 	version = "dev"
 	commit  = "none"
@@ -162,7 +162,10 @@ func parsePatterns(patterns string) []string {
 }
 
 // ParseFlags processes command-line arguments and returns configuration
-func ParseFlags() *Config {
+func ParseFlags(v, c, d string) *Config {
+	version = v
+	commit = c
+	date = d
 	parser := newFlagParser()
 	return parser.parse()
 }
