@@ -45,16 +45,16 @@ const (
 
 // config holds the configuration options for the tool
 type config struct {
-	// Debug enables detailed processing information output
-	Debug bool
-	// Silent disables all output when processing files
-	Silent bool
-	// Exclude contains glob patterns for files to exclude from processing
-	// Mutually exclusive with Include
-	Exclude []string
-	// Include contains glob patterns for files to include in processing
-	// Mutually exclusive with Exclude
-	Include []string
+	// debug enables detailed processing information output
+	debug bool
+	// silent disables all output when processing files
+	silent bool
+	// exclude contains glob patterns for files to exclude from processing
+	// Mutually exclusive with include
+	exclude []string
+	// include contains glob patterns for files to include in processing
+	// Mutually exclusive with exclude
+	include []string
 }
 
 // patternMatcher defines the interface for pattern matching operations
@@ -105,11 +105,11 @@ type fileFilter struct {
 func newFileFilter(config *config) *fileFilter {
 	var excludeMatcher, includeMatcher patternMatcher
 
-	if len(config.Exclude) > 0 {
-		excludeMatcher = newGlobPatternMatcher(config.Exclude)
+	if len(config.exclude) > 0 {
+		excludeMatcher = newGlobPatternMatcher(config.exclude)
 	}
-	if len(config.Include) > 0 {
-		includeMatcher = newGlobPatternMatcher(config.Include)
+	if len(config.include) > 0 {
+		includeMatcher = newGlobPatternMatcher(config.include)
 	}
 
 	return &fileFilter{
@@ -280,10 +280,10 @@ func (fp *flagParser) parse() *config {
 	}
 
 	return &config{
-		Debug:   debug,
-		Silent:  silent,
-		Exclude: excludePatterns,
-		Include: includePatterns,
+		debug:   debug,
+		silent:  silent,
+		exclude: excludePatterns,
+		include: includePatterns,
 	}
 }
 
@@ -400,28 +400,28 @@ func main() {
 
 // log outputs a regular message (respects silent mode)
 func (l *consoleLogger) log(format string, args ...any) {
-	if !l.config.Silent && !l.config.Debug {
+	if !l.config.silent && !l.config.debug {
 		fmt.Printf(format, args...)
 	}
 }
 
 // debug outputs debug information (only when debug mode is enabled)
 func (l *consoleLogger) debug(format string, args ...any) {
-	if l.config.Debug {
+	if l.config.debug {
 		fmt.Printf("│ "+format+"\n", args...)
 	}
 }
 
 // debugSection starts a new debug section with a title
 func (l *consoleLogger) debugSection(title string) {
-	if l.config.Debug {
+	if l.config.debug {
 		fmt.Printf("\n┌─ %s ─────────────────────────────────────────────────────────\n", title)
 	}
 }
 
 // debugEnd closes a debug section
 func (l *consoleLogger) debugEnd() {
-	if l.config.Debug {
+	if l.config.debug {
 		fmt.Printf("└─────────────────────────────────────────────────────────────\n")
 	}
 }

@@ -364,7 +364,7 @@ func TestConsoleLoggerOutputModes(t *testing.T) {
 	}{
 		{
 			name:           "normal mode outputs message",
-			config:         &config{Debug: false, Silent: false},
+			config:         &config{debug: false, silent: false},
 			methodType:     "Log",
 			message:        "test message",
 			expectedOutput: "test message",
@@ -372,7 +372,7 @@ func TestConsoleLoggerOutputModes(t *testing.T) {
 		},
 		{
 			name:           "silent mode outputs nothing",
-			config:         &config{Debug: false, Silent: true},
+			config:         &config{debug: false, silent: true},
 			methodType:     "Log",
 			message:        "test message",
 			expectedOutput: "",
@@ -380,7 +380,7 @@ func TestConsoleLoggerOutputModes(t *testing.T) {
 		},
 		{
 			name:           "debug mode outputs debug info",
-			config:         &config{Debug: true, Silent: false},
+			config:         &config{debug: true, silent: false},
 			methodType:     "Debug",
 			message:        "debug message",
 			expectedOutput: "debug message",
@@ -422,32 +422,32 @@ func TestParseFlags(t *testing.T) {
 		{
 			name:     "no flags",
 			args:     []string{"ccnewline"},
-			expected: &config{Debug: false, Silent: false},
+			expected: &config{debug: false, silent: false},
 		},
 		{
 			name:     "debug flag -d",
 			args:     []string{"ccnewline", "-d"},
-			expected: &config{Debug: true, Silent: false},
+			expected: &config{debug: true, silent: false},
 		},
 		{
 			name:     "debug flag --debug",
 			args:     []string{"ccnewline", "--debug"},
-			expected: &config{Debug: true, Silent: false},
+			expected: &config{debug: true, silent: false},
 		},
 		{
 			name:     "silent flag -s",
 			args:     []string{"ccnewline", "-s"},
-			expected: &config{Debug: false, Silent: true},
+			expected: &config{debug: false, silent: true},
 		},
 		{
 			name:     "silent flag --silent",
 			args:     []string{"ccnewline", "--silent"},
-			expected: &config{Debug: false, Silent: true},
+			expected: &config{debug: false, silent: true},
 		},
 		{
 			name:     "both flags",
 			args:     []string{"ccnewline", "-d", "-s"},
-			expected: &config{Debug: true, Silent: true},
+			expected: &config{debug: true, silent: true},
 		},
 	}
 
@@ -573,7 +573,7 @@ func TestConsoleLogger(t *testing.T) {
 	}{
 		{
 			name:           "Log in silent mode",
-			config:         &config{Silent: true},
+			config:         &config{silent: true},
 			message:        "test message\n",
 			methodType:     "Log",
 			expectedOutput: "",
@@ -581,7 +581,7 @@ func TestConsoleLogger(t *testing.T) {
 		},
 		{
 			name:           "Log in debug mode",
-			config:         &config{Debug: true},
+			config:         &config{debug: true},
 			message:        "test message\n",
 			methodType:     "Log",
 			expectedOutput: "",
@@ -597,7 +597,7 @@ func TestConsoleLogger(t *testing.T) {
 		},
 		{
 			name:           "Debug without debug mode",
-			config:         &config{Debug: false},
+			config:         &config{debug: false},
 			message:        "test",
 			methodType:     "Debug",
 			expectedOutput: "",
@@ -605,7 +605,7 @@ func TestConsoleLogger(t *testing.T) {
 		},
 		{
 			name:           "Debug with debug mode",
-			config:         &config{Debug: true},
+			config:         &config{debug: true},
 			message:        "debug message",
 			methodType:     "Debug",
 			expectedOutput: "debug message",
@@ -613,7 +613,7 @@ func TestConsoleLogger(t *testing.T) {
 		},
 		{
 			name:           "DebugSection with debug mode",
-			config:         &config{Debug: true},
+			config:         &config{debug: true},
 			message:        "TEST",
 			methodType:     "DebugSection",
 			expectedOutput: "TEST",
@@ -621,7 +621,7 @@ func TestConsoleLogger(t *testing.T) {
 		},
 		{
 			name:           "DebugSeparator with debug mode",
-			config:         &config{Debug: true},
+			config:         &config{debug: true},
 			message:        "",
 			methodType:     "DebugSeparator",
 			expectedOutput: "└",
@@ -769,17 +769,17 @@ func TestFlagParser(t *testing.T) {
 		{
 			name:     "no flags",
 			args:     []string{"ccnewline"},
-			expected: &config{Debug: false, Silent: false},
+			expected: &config{debug: false, silent: false},
 		},
 		{
 			name:     "debug flag",
 			args:     []string{"ccnewline", "-d"},
-			expected: &config{Debug: true, Silent: false},
+			expected: &config{debug: true, silent: false},
 		},
 		{
 			name:     "silent flag",
 			args:     []string{"ccnewline", "-s"},
-			expected: &config{Debug: false, Silent: true},
+			expected: &config{debug: false, silent: true},
 		},
 	}
 
@@ -1839,8 +1839,8 @@ func TestFileFilter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := &config{
-				Exclude: tt.exclude,
-				Include: tt.include,
+				exclude: tt.exclude,
+				include: tt.include,
 			}
 			filter := newFileFilter(config)
 			result := filter.shouldProcess(tt.filePath)
@@ -1912,11 +1912,11 @@ func TestParseFlagsWithPatterns(t *testing.T) {
 			parser := newFlagParser()
 			config := parser.parse()
 
-			if !reflect.DeepEqual(config.Exclude, tt.expectedExclude) {
-				t.Errorf("Expected exclude %v, got %v", tt.expectedExclude, config.Exclude)
+			if !reflect.DeepEqual(config.exclude, tt.expectedExclude) {
+				t.Errorf("Expected exclude %v, got %v", tt.expectedExclude, config.exclude)
 			}
-			if !reflect.DeepEqual(config.Include, tt.expectedInclude) {
-				t.Errorf("Expected include %v, got %v", tt.expectedInclude, config.Include)
+			if !reflect.DeepEqual(config.include, tt.expectedInclude) {
+				t.Errorf("Expected include %v, got %v", tt.expectedInclude, config.include)
 			}
 		})
 	}
