@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -48,6 +49,98 @@ type config struct {
 	Debug bool
 	// Silent disables all output when processing files
 	Silent bool
+	// Exclude contains glob patterns for files to exclude from processing
+	// Mutually exclusive with Include
+	Exclude []string
+	// Include contains glob patterns for files to include in processing
+	// Mutually exclusive with Exclude
+	Include []string
+}
+
+// patternMatcher defines the interface for pattern matching operations
+type patternMatcher interface {
+	// matches checks if a file path matches the pattern
+	matches(filePath string) bool
+}
+
+// globPatternMatcher implements pattern matching using glob patterns
+type globPatternMatcher struct {
+	patterns []string
+}
+
+// newGlobPatternMatcher creates a new glob pattern matcher
+func newGlobPatternMatcher(patterns []string) *globPatternMatcher {
+	return &globPatternMatcher{patterns: patterns}
+}
+
+// matches checks if the file path matches any of the glob patterns
+func (gpm *globPatternMatcher) matches(filePath string) bool {
+	if len(gpm.patterns) == 0 {
+		return false
+	}
+
+	for _, pattern := range gpm.patterns {
+		matched, err := filepath.Match(pattern, filePath)
+		if err == nil && matched {
+			return true
+		}
+		// Also check against the base name for patterns without path separators
+		if !strings.Contains(pattern, string(filepath.Separator)) {
+			matched, err = filepath.Match(pattern, filepath.Base(filePath))
+			if err == nil && matched {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// fileFilter handles filtering of files based on include/exclude patterns
+type fileFilter struct {
+	excludeMatcher patternMatcher
+	includeMatcher patternMatcher
+}
+
+// newFileFilter creates a new file filter with the given config
+func newFileFilter(config *config) *fileFilter {
+	var excludeMatcher, includeMatcher patternMatcher
+
+	if len(config.Exclude) > 0 {
+		excludeMatcher = newGlobPatternMatcher(config.Exclude)
+	}
+	if len(config.Include) > 0 {
+		includeMatcher = newGlobPatternMatcher(config.Include)
+	}
+
+	return &fileFilter{
+		excludeMatcher: excludeMatcher,
+		includeMatcher: includeMatcher,
+	}
+}
+
+// shouldProcess determines if a file should be processed based on patterns
+func (ff *fileFilter) shouldProcess(filePath string) bool {
+	// If include patterns are specified, file must match at least one
+	if ff.includeMatcher != nil {
+		if !ff.includeMatcher.matches(filePath) {
+			return false
+		}
+	}
+
+	// If exclude patterns are specified, file must not match any
+	if ff.excludeMatcher != nil {
+		if ff.excludeMatcher.matches(filePath) {
+			return false
+		}
+	}
+
+	// If no patterns specified, process all files
+	if ff.includeMatcher == nil && ff.excludeMatcher == nil {
+		return true
+	}
+
+	// Default: process if we reach here (include matched or was nil, exclude didn't match or was nil)
+	return true
 }
 
 // logger defines the unified logging interface
@@ -84,6 +177,10 @@ Options:
   -s, --silent     Silent mode - no output
   -v, --version    Show version information
   -h, --help       Show this help message
+  -e, --exclude    Glob patterns to exclude (comma-separated)
+  -i, --include    Glob patterns to include (comma-separated)
+
+Note: --exclude and --include are mutually exclusive.
 `, os.Args[0])
 }
 
@@ -91,6 +188,12 @@ Options:
 func defineBoolFlag(p *bool, short, long string, usage string) {
 	flag.BoolVar(p, short, false, usage)
 	flag.BoolVar(p, long, false, usage)
+}
+
+// defineStringFlag defines both short and long form of a string flag
+func defineStringFlag(p *string, short, long, value, usage string) {
+	flag.StringVar(p, short, value, usage)
+	flag.StringVar(p, long, value, usage)
 }
 
 // versionHandler handles version display
@@ -132,14 +235,27 @@ func (fp *flagParser) parse() *config {
 	flag.Usage = usage
 
 	var debug, silent, showVersion bool
+	var exclude, include string
+
 	defineBoolFlag(&debug, "d", "debug", "Enable debug output")
 	defineBoolFlag(&silent, "s", "silent", "Silent mode - no output")
 	defineBoolFlag(&showVersion, "v", "version", "Show version information")
+
+	defineStringFlag(&exclude, "e", "exclude", "", "Glob patterns to exclude (comma-separated)")
+	defineStringFlag(&include, "i", "include", "", "Glob patterns to include (comma-separated)")
+
 	flag.Parse()
 
 	// Handle version flag
 	if showVersion {
 		fp.versionHandler.showVersion()
+	}
+
+	// Validate mutual exclusivity of exclude and include
+	if exclude != "" && include != "" {
+		fmt.Fprintf(os.Stderr, "Error: --exclude and --include cannot be used together\n")
+		flag.Usage()
+		os.Exit(1)
 	}
 
 	// Validate arguments
@@ -148,7 +264,27 @@ func (fp *flagParser) parse() *config {
 		os.Exit(1)
 	}
 
-	return &config{Debug: debug, Silent: silent}
+	// Parse patterns
+	var excludePatterns, includePatterns []string
+	if exclude != "" {
+		excludePatterns = strings.Split(exclude, ",")
+		for i := range excludePatterns {
+			excludePatterns[i] = strings.TrimSpace(excludePatterns[i])
+		}
+	}
+	if include != "" {
+		includePatterns = strings.Split(include, ",")
+		for i := range includePatterns {
+			includePatterns[i] = strings.TrimSpace(includePatterns[i])
+		}
+	}
+
+	return &config{
+		Debug:   debug,
+		Silent:  silent,
+		Exclude: excludePatterns,
+		Include: includePatterns,
+	}
 }
 
 // parseFlags parses command line flags and returns configuration or exits on error
@@ -168,16 +304,35 @@ func run(config *config, input io.Reader) {
 		return
 	}
 
-	processFiles(logger, filePaths)
+	filter := newFileFilter(config)
+	processFiles(logger, filePaths, filter)
 }
 
 // processFiles handles the processing of multiple files with debug output
-func processFiles(logger logger, filePaths []string) {
+func processFiles(logger logger, filePaths []string, filter *fileFilter) {
 	logger.debugSection("PROCESSING")
-	logger.debug("Total files to process: %d", len(filePaths))
 
-	for i, filePath := range filePaths {
-		processSingleFile(logger, filePath, i+1, len(filePaths))
+	// Filter files based on include/exclude patterns
+	var filteredPaths []string
+	excludeCount := 0
+
+	for _, filePath := range filePaths {
+		if filter.shouldProcess(filePath) {
+			filteredPaths = append(filteredPaths, filePath)
+		} else {
+			excludeCount++
+			logger.debug("Excluding file: %s", filePath)
+		}
+	}
+
+	logger.debug("Total files found: %d", len(filePaths))
+	if excludeCount > 0 {
+		logger.debug("Files excluded by patterns: %d", excludeCount)
+	}
+	logger.debug("Files to process: %d", len(filteredPaths))
+
+	for i, filePath := range filteredPaths {
+		processSingleFile(logger, filePath, i+1, len(filteredPaths))
 	}
 
 	logger.debugEnd()

@@ -61,6 +61,29 @@ Add ccnewline to your `.claude/settings.json` as a PostToolUse hook:
 
 Use `-d` for debug output or `-s` for silent mode if needed.
 
+## Options
+
+- `-d`, `--debug`: Enable detailed debug output
+- `-s`, `--silent`: Silent mode - no output
+- `-e`, `--exclude`: Exclude files matching glob patterns (comma-separated)
+- `-i`, `--include`: Include only files matching glob patterns (comma-separated)
+- `-v`, `--version`: Show version information
+
+**Pattern examples:**
+
+```bash
+# Exclude all .txt files
+ccnewline -e "*.txt"
+
+# Include only .go and .js files
+ccnewline -i "*.go,*.js"
+
+# Exclude multiple file types
+ccnewline --exclude "*.txt,*.md,*.log"
+```
+
+Note: `--exclude` and `--include` options are mutually exclusive.
+
 ## Development
 
 For development and testing:

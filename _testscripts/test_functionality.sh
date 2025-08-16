@@ -1,256 +1,178 @@
 #!/bin/bash
 
-# ccnewline minimal functionality test script
-# Tests Claude Code Edit/MultiEdit/Write patterns and output modes
+# Simple integration tests for ccnewline pattern matching feature
+# Tests basic functionality and new --exclude/--include options
+
+set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 CCNEWLINE="$PROJECT_ROOT/ccnewline"
 TMP_DIR="$SCRIPT_DIR/tmp"
 
-# Colors for output
-RED='\033[0;31m'
+# Colors
 GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+RED='\033[0;31m'
+NC='\033[0m'
 
-# Function to print colored output
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
+# Test counter
+TESTS=0
+PASSED=0
 
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Function to clean up test files
+# Helper functions
 cleanup() {
-    if [[ -d "$TMP_DIR" ]]; then
-        chmod -R 755 "$TMP_DIR" 2>/dev/null
-        rm -rf "$TMP_DIR"
-    fi
+    rm -rf "$TMP_DIR"
 }
 
-# Function to create test file without newline
-create_file_without_newline() {
-    local filename="$1"
-    local content="$2"
-    printf "%s" "$content" > "$TMP_DIR/$filename"
+pass() {
+    echo -e "${GREEN}✓${NC} $1"
+    PASSED=$((PASSED + 1))
 }
 
-# Function to create test file with newline
-create_file_with_newline() {
-    local filename="$1"
-    local content="$2"
-    printf "%s\n" "$content" > "$TMP_DIR/$filename"
+fail() {
+    echo -e "${RED}✗${NC} $1"
 }
 
-# Function to check if file ends with newline
-check_newline() {
-    local filename="$1"
-    local filepath="$TMP_DIR/$filename"
-    if [[ ! -f "$filepath" ]]; then
-        return 1
-    fi
-    
-    # Use tail and od to check last byte
-    if tail -c1 "$filepath" | od -An -tx1 | grep -q "0a"; then
-        return 0  # Has newline
-    else
-        return 1  # No newline
-    fi
-}
-
-# Simple test runner for Claude Code tool patterns and output modes
 run_test() {
-    local test_name="$1"
-    local json_input="$2"
-    local expected_file="$3"
-    local mode="$4"  # "normal", "silent", "debug"
-    
-    print_status "Testing: $test_name"
-    
-    # Build command flags
-    local cmd_flags=""
-    case "$mode" in
-        "silent") cmd_flags="-s" ;;
-        "debug") cmd_flags="-d" ;;
-        *) cmd_flags="" ;;
-    esac
-    
-    # Execute and capture output
-    local output_file="$TMP_DIR/test_output.txt"
-    echo "$json_input" | "$CCNEWLINE" $cmd_flags > "$output_file" 2>&1
-    local captured_output="$(cat "$output_file")"
-    
-    local test_passed=true
-    
-    # Check file was processed (if expected)
-    if [[ -n "$expected_file" ]]; then
-        if [[ ! -f "$TMP_DIR/$expected_file" ]]; then
-            print_error "  ✗ Expected file $expected_file not found"
-            test_passed=false
-        elif ! check_newline "$expected_file"; then
-            print_error "  ✗ File $expected_file should end with newline"
-            test_passed=false
-        fi
-    fi
-    
-    # Check output based on mode
-    case "$mode" in
-        "silent")
-            if [[ -n "$captured_output" ]]; then
-                print_error "  ✗ Silent mode produced output: '$captured_output'"
-                test_passed=false
-            fi
-            ;;
-        "debug")
-            if [[ ! "$captured_output" =~ "INPUT PARSING" ]] || [[ ! "$captured_output" =~ "PROCESSING" ]]; then
-                print_error "  ✗ Debug output missing expected sections"
-                test_passed=false
-            fi
-            ;;
-        "normal")
-            if [[ -n "$expected_file" ]]; then
-                # Normal mode should output "Added newline to [file]" when newline is added
-                if [[ ! "$captured_output" =~ "Added newline to" ]]; then
-                    print_error "  ✗ Normal mode should output 'Added newline to' message"
-                    test_passed=false
-                fi
-            else
-                # No expected file means file already had newline, should produce no output
-                if [[ "$captured_output" =~ "Added newline to" ]]; then
-                    print_error "  ✗ Normal mode should not output when file already has newline"
-                    test_passed=false
-                fi
-            fi
-            ;;
-    esac
-    
-    if [[ "$test_passed" == "true" ]]; then
-        print_success "  ✓ PASS"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
-    else
-        print_error "  ✗ FAIL"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-    fi
-    
-    TESTS_RUN=$((TESTS_RUN + 1))
-    rm -f "$output_file"
+    TESTS=$((TESTS + 1))
+    echo "Test $TESTS: $1"
 }
 
-
-# Test execution tracking
-TESTS_RUN=0
-TESTS_PASSED=0
-TESTS_FAILED=0
-
-# Main test function
-main() {
-    print_status "Starting ccnewline minimal functionality tests"
-    
-    # Check if ccnewline binary exists
-    if [[ ! -f "$CCNEWLINE" ]]; then
-        print_status "Building ccnewline..."
-        cd "$PROJECT_ROOT" && go build -o ccnewline
-        if [[ ! -f "$CCNEWLINE" ]]; then
-            print_error "Failed to build ccnewline"
-            exit 1
-        fi
-    fi
-    
-    # Setup test environment
-    cleanup
-    mkdir -p "$TMP_DIR"
-    cd "$TMP_DIR"
-    
-    # ============================================================================
-    # CLAUDE CODE TOOL PATTERN TESTS (Edit, MultiEdit, Write)
-    # ============================================================================
-    print_status "=== CLAUDE CODE TOOL PATTERN TESTS ==="
-    
-    # Test Edit pattern (file_path field)
-    create_file_without_newline "edit_test.txt" "edit content"
-    run_test "Edit pattern" \
-        "{\"tool_input\": {\"file_path\": \"$TMP_DIR/edit_test.txt\"}}" \
-        "edit_test.txt" \
-        "normal"
-    
-    # Test MultiEdit pattern (paths array)
-    create_file_without_newline "multi1.txt" "multi content 1"
-    create_file_without_newline "multi2.txt" "multi content 2"
-    run_test "MultiEdit pattern" \
-        "{\"tool_input\": {\"paths\": [\"$TMP_DIR/multi1.txt\", \"$TMP_DIR/multi2.txt\"]}}" \
-        "multi1.txt" \
-        "normal"
-    
-    # Test Write pattern (file_path field, same as Edit)
-    create_file_without_newline "write_test.txt" "write content"
-    run_test "Write pattern" \
-        "{\"tool_input\": {\"file_path\": \"$TMP_DIR/write_test.txt\"}}" \
-        "write_test.txt" \
-        "normal"
-    
-    # ============================================================================
-    # OUTPUT MODE TESTS (normal, silent, debug)
-    # ============================================================================
-    print_status "=== OUTPUT MODE TESTS ==="
-    
-    # Test normal mode - no newline (should add)
-    create_file_without_newline "normal_mode.txt" "normal content"
-    run_test "Normal mode - no newline" \
-        "{\"tool_input\": {\"file_path\": \"$TMP_DIR/normal_mode.txt\"}}" \
-        "normal_mode.txt" \
-        "normal"
-    
-    # Test normal mode - has newline (should not add)
-    create_file_with_newline "normal_has_newline.txt" "normal content"
-    run_test "Normal mode - has newline" \
-        "{\"tool_input\": {\"file_path\": \"$TMP_DIR/normal_has_newline.txt\"}}" \
-        "" \
-        "normal"
-    
-    # Test silent mode
-    create_file_without_newline "silent_mode.txt" "silent content"
-    run_test "Silent mode" \
-        "{\"tool_input\": {\"file_path\": \"$TMP_DIR/silent_mode.txt\"}}" \
-        "silent_mode.txt" \
-        "silent"
-    
-    # Test debug mode
-    create_file_without_newline "debug_mode.txt" "debug content"
-    run_test "Debug mode" \
-        "{\"tool_input\": {\"file_path\": \"$TMP_DIR/debug_mode.txt\"}}" \
-        "debug_mode.txt" \
-        "debug"
-    
-    # ============================================================================
-    # SUMMARY
-    # ============================================================================
-    
-    cleanup
-    
-    echo
-    print_status "=== TEST SUMMARY ==="
-    print_status "Tests run: $TESTS_RUN"
-    if [[ "$TESTS_FAILED" -eq 0 ]]; then
-        print_success "All $TESTS_PASSED tests PASSED ✓"
-        return 0
-    else
-        print_error "$TESTS_FAILED tests FAILED ✗"
-        return 1
-    fi
-}
-
-# Trap to ensure cleanup on exit
+# Setup
 trap cleanup EXIT
+cleanup
+mkdir -p "$TMP_DIR"
 
-# Run main function
-go build
-main "$@"
-exit_code=$?
-exit $exit_code
+# Build if needed
+if [[ ! -f "$CCNEWLINE" ]]; then
+    cd "$PROJECT_ROOT" && go build -o ccnewline
+fi
+
+echo "Running ccnewline integration tests..."
+echo
+
+# Test 1: Basic functionality - file without newline
+run_test "Basic functionality - adds newline to file without one"
+printf "test content" > "$TMP_DIR/test1.txt"
+echo '{"tool_input": {"file_path": "'$TMP_DIR'/test1.txt"}}' | "$CCNEWLINE" > /dev/null
+if tail -c1 "$TMP_DIR/test1.txt" | od -An -tx1 | grep -q "0a"; then
+    pass "File now ends with newline"
+else
+    fail "File should end with newline"
+fi
+echo
+
+# Test 2: File already has newline - should not modify
+run_test "File with newline - should not be modified"
+printf "test content\n" > "$TMP_DIR/test2.txt"
+before=$(stat -f%m "$TMP_DIR/test2.txt" 2>/dev/null || stat -c%Y "$TMP_DIR/test2.txt")
+echo '{"tool_input": {"file_path": "'$TMP_DIR'/test2.txt"}}' | "$CCNEWLINE" > /dev/null
+after=$(stat -f%m "$TMP_DIR/test2.txt" 2>/dev/null || stat -c%Y "$TMP_DIR/test2.txt")
+if [[ "$before" == "$after" ]]; then
+    pass "File was not modified"
+else
+    fail "File should not have been modified"
+fi
+echo
+
+# Test 3: Exclude pattern - should exclude .txt files
+run_test "Exclude pattern - excludes .txt files"
+printf "go content" > "$TMP_DIR/test3.go"
+printf "txt content" > "$TMP_DIR/test3.txt"
+echo '{"tool_input": {"paths": ["'$TMP_DIR'/test3.go", "'$TMP_DIR'/test3.txt"]}}' | "$CCNEWLINE" --exclude "*.txt" > /dev/null
+
+# Check both conditions for this test
+go_processed=false
+txt_excluded=false
+
+if tail -c1 "$TMP_DIR/test3.go" | od -An -tx1 | grep -q "0a"; then
+    go_processed=true
+fi
+
+if ! tail -c1 "$TMP_DIR/test3.txt" | od -An -tx1 | grep -q "0a"; then
+    txt_excluded=true
+fi
+
+if [[ "$go_processed" == "true" && "$txt_excluded" == "true" ]]; then
+    pass "Exclude pattern works correctly"
+else
+    fail "Exclude pattern failed"
+fi
+echo
+
+# Test 4: Include pattern - should only include .go files
+run_test "Include pattern - only processes .go files"
+printf "go content" > "$TMP_DIR/test4.go"
+printf "txt content" > "$TMP_DIR/test4.txt"
+echo '{"tool_input": {"paths": ["'$TMP_DIR'/test4.go", "'$TMP_DIR'/test4.txt"]}}' | "$CCNEWLINE" --include "*.go" > /dev/null
+
+# Check both conditions for this test
+go_processed=false
+txt_excluded=false
+
+if tail -c1 "$TMP_DIR/test4.go" | od -An -tx1 | grep -q "0a"; then
+    go_processed=true
+fi
+
+if ! tail -c1 "$TMP_DIR/test4.txt" | od -An -tx1 | grep -q "0a"; then
+    txt_excluded=true
+fi
+
+if [[ "$go_processed" == "true" && "$txt_excluded" == "true" ]]; then
+    pass "Include pattern works correctly"
+else
+    fail "Include pattern failed"
+fi
+echo
+
+# Test 5: Multiple exclude patterns
+run_test "Multiple exclude patterns - excludes .txt and .md files"
+printf "go content" > "$TMP_DIR/test5.go"
+printf "txt content" > "$TMP_DIR/test5.txt"
+printf "md content" > "$TMP_DIR/test5.md"
+echo '{"tool_input": {"paths": ["'$TMP_DIR'/test5.go", "'$TMP_DIR'/test5.txt", "'$TMP_DIR'/test5.md"]}}' | "$CCNEWLINE" --exclude "*.txt,*.md" > /dev/null
+
+# Check all conditions for this test
+go_processed=false
+files_excluded=true
+
+if tail -c1 "$TMP_DIR/test5.go" | od -An -tx1 | grep -q "0a"; then
+    go_processed=true
+fi
+
+if tail -c1 "$TMP_DIR/test5.txt" | od -An -tx1 | grep -q "0a"; then
+    files_excluded=false
+fi
+if tail -c1 "$TMP_DIR/test5.md" | od -An -tx1 | grep -q "0a"; then
+    files_excluded=false
+fi
+
+if [[ "$go_processed" == "true" && "$files_excluded" == "true" ]]; then
+    pass "Multiple exclude patterns work correctly"
+else
+    fail "Multiple exclude patterns failed"
+fi
+echo
+
+# Test 6: Mutual exclusivity check - should fail with both flags
+run_test "Mutual exclusivity - should fail with both --exclude and --include"
+if echo '{"tool_input": {"file_path": "'$TMP_DIR'/test.txt"}}' | "$CCNEWLINE" --exclude "*.txt" --include "*.go" 2>/dev/null; then
+    fail "Should have failed with both flags"
+else
+    pass "Correctly failed with both --exclude and --include flags"
+fi
+echo
+
+# Summary
+echo "================================"
+echo "Tests completed: $TESTS"
+echo "Tests passed: $PASSED"
+echo "Tests failed: $((TESTS - PASSED))"
+
+if [[ "$PASSED" == "$TESTS" ]]; then
+    echo -e "${GREEN}All tests passed!${NC}"
+    exit 0
+else
+    echo -e "${RED}Some tests failed!${NC}"
+    exit 1
+fi

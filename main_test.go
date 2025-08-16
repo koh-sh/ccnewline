@@ -1686,3 +1686,238 @@ func TestCheckLastByteIOError(t *testing.T) {
 		})
 	}
 }
+
+// TestGlobPatternMatcher tests the glob pattern matching functionality
+func TestGlobPatternMatcher(t *testing.T) {
+	tests := []struct {
+		name     string
+		patterns []string
+		filePath string
+		expected bool
+	}{
+		{
+			name:     "no patterns - should not match",
+			patterns: []string{},
+			filePath: "test.txt",
+			expected: false,
+		},
+		{
+			name:     "single pattern exact match",
+			patterns: []string{"*.txt"},
+			filePath: "test.txt",
+			expected: true,
+		},
+		{
+			name:     "single pattern no match",
+			patterns: []string{"*.go"},
+			filePath: "test.txt",
+			expected: false,
+		},
+		{
+			name:     "multiple patterns - first matches",
+			patterns: []string{"*.txt", "*.md"},
+			filePath: "test.txt",
+			expected: true,
+		},
+		{
+			name:     "multiple patterns - second matches",
+			patterns: []string{"*.go", "*.txt"},
+			filePath: "test.txt",
+			expected: true,
+		},
+		{
+			name:     "path with directory - full path match",
+			patterns: []string{"src/*.go"},
+			filePath: "src/main.go",
+			expected: true,
+		},
+		{
+			name:     "path with directory - basename match",
+			patterns: []string{"*.go"},
+			filePath: "src/main.go",
+			expected: true,
+		},
+		{
+			name:     "wildcard pattern",
+			patterns: []string{"test_*"},
+			filePath: "test_file.txt",
+			expected: true,
+		},
+		{
+			name:     "complex pattern no match",
+			patterns: []string{"*.py", "test_*.md"},
+			filePath: "main.go",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matcher := newGlobPatternMatcher(tt.patterns)
+			result := matcher.matches(tt.filePath)
+			if result != tt.expected {
+				t.Errorf("Expected %v, got %v for patterns %v and path %s", tt.expected, result, tt.patterns, tt.filePath)
+			}
+		})
+	}
+}
+
+// TestFileFilter tests the file filtering functionality
+func TestFileFilter(t *testing.T) {
+	tests := []struct {
+		name     string
+		exclude  []string
+		include  []string
+		filePath string
+		expected bool
+	}{
+		{
+			name:     "no patterns - should process",
+			exclude:  []string{},
+			include:  []string{},
+			filePath: "test.txt",
+			expected: true,
+		},
+		{
+			name:     "exclude pattern matches - should not process",
+			exclude:  []string{"*.txt"},
+			include:  []string{},
+			filePath: "test.txt",
+			expected: false,
+		},
+		{
+			name:     "exclude pattern no match - should process",
+			exclude:  []string{"*.go"},
+			include:  []string{},
+			filePath: "test.txt",
+			expected: true,
+		},
+		{
+			name:     "include pattern matches - should process",
+			exclude:  []string{},
+			include:  []string{"*.txt"},
+			filePath: "test.txt",
+			expected: true,
+		},
+		{
+			name:     "include pattern no match - should not process",
+			exclude:  []string{},
+			include:  []string{"*.go"},
+			filePath: "test.txt",
+			expected: false,
+		},
+		{
+			name:     "multiple exclude patterns - one matches",
+			exclude:  []string{"*.go", "*.txt"},
+			include:  []string{},
+			filePath: "test.txt",
+			expected: false,
+		},
+		{
+			name:     "multiple include patterns - one matches",
+			exclude:  []string{},
+			include:  []string{"*.go", "*.txt"},
+			filePath: "test.txt",
+			expected: true,
+		},
+		{
+			name:     "complex path with exclude",
+			exclude:  []string{"temp/*"},
+			include:  []string{},
+			filePath: "temp/test.txt",
+			expected: false,
+		},
+		{
+			name:     "complex path with include",
+			exclude:  []string{},
+			include:  []string{"src/*"},
+			filePath: "src/main.go",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := &config{
+				Exclude: tt.exclude,
+				Include: tt.include,
+			}
+			filter := newFileFilter(config)
+			result := filter.shouldProcess(tt.filePath)
+			if result != tt.expected {
+				t.Errorf("Expected %v, got %v for exclude %v, include %v, path %s",
+					tt.expected, result, tt.exclude, tt.include, tt.filePath)
+			}
+		})
+	}
+}
+
+// TestParseFlagsWithPatterns tests the pattern parsing functionality
+func TestParseFlagsWithPatterns(t *testing.T) {
+	// Save original command line args and restore at the end
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	tests := []struct {
+		name            string
+		args            []string
+		expectedExclude []string
+		expectedInclude []string
+		expectExit      bool
+	}{
+		{
+			name:            "no patterns",
+			args:            []string{"ccnewline"},
+			expectedExclude: nil,
+			expectedInclude: nil,
+			expectExit:      false,
+		},
+		{
+			name:            "single exclude pattern",
+			args:            []string{"ccnewline", "--exclude", "*.txt"},
+			expectedExclude: []string{"*.txt"},
+			expectedInclude: nil,
+			expectExit:      false,
+		},
+		{
+			name:            "single include pattern",
+			args:            []string{"ccnewline", "--include", "*.go"},
+			expectedExclude: nil,
+			expectedInclude: []string{"*.go"},
+			expectExit:      false,
+		},
+		{
+			name:            "multiple exclude patterns",
+			args:            []string{"ccnewline", "--exclude", "*.txt,*.md"},
+			expectedExclude: []string{"*.txt", "*.md"},
+			expectedInclude: nil,
+			expectExit:      false,
+		},
+		{
+			name:            "multiple include patterns with spaces",
+			args:            []string{"ccnewline", "--include", "*.go, *.txt"},
+			expectedExclude: nil,
+			expectedInclude: []string{"*.go", "*.txt"},
+			expectExit:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset flag package for each test
+			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+
+			os.Args = tt.args
+
+			parser := newFlagParser()
+			config := parser.parse()
+
+			if !reflect.DeepEqual(config.Exclude, tt.expectedExclude) {
+				t.Errorf("Expected exclude %v, got %v", tt.expectedExclude, config.Exclude)
+			}
+			if !reflect.DeepEqual(config.Include, tt.expectedInclude) {
+				t.Errorf("Expected include %v, got %v", tt.expectedInclude, config.Include)
+			}
+		})
+	}
+}

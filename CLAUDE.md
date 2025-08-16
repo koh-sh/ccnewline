@@ -105,6 +105,23 @@ This tool is designed exclusively as a Claude Code PostToolUse hook. Configure i
 - `-s`/`--silent`: No output  
 - `-d`/`--debug`: Detailed processing information with structured output
 
+**Pattern matching options:**
+- `-e`/`--exclude <patterns>`: Exclude files matching glob patterns (comma-separated)
+- `-i`/`--include <patterns>`: Include only files matching glob patterns (comma-separated)
+- Note: `--exclude` and `--include` are mutually exclusive
+
+**Pattern examples:**
+```bash
+# Exclude all .txt files
+./ccnewline -e "*.txt"
+
+# Include only .go and .js files  
+./ccnewline -i "*.go,*.js"
+
+# Exclude multiple file types
+./ccnewline --exclude "*.txt,*.md,*.log"
+```
+
 The tool processes Edit, MultiEdit, and Write tool outputs automatically, adding trailing newlines only to files that need them.
 
 ## Key Architecture Points
