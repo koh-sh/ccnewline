@@ -33,6 +33,12 @@ The process is completely transparent - you don't need to think about it.
 brew install --cask koh-sh/tap/ccnewline
 ```
 
+### Using mise
+
+```bash
+mise use -g github:koh-sh/ccnewline
+```
+
 ### Download from Releases
 
 Download the latest binary for your platform from the [releases page](https://github.com/koh-sh/ccnewline/releases).
