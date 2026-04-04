@@ -10,9 +10,15 @@ updates:
     schedule:
       interval: "weekly"
       day: "friday"
+    cooldown:
+      default-days: 5
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      # Check for updates to GitHub Actions every week
-      interval: "weekly"
-      day: "friday"
+      interval: "monthly"
+    cooldown:
+      default-days: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
